@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -204,7 +203,7 @@ function renderToday(){
  <div class="grid two"><button class="secondary" onclick="markComplete(true)">${isComplete()?"Completed":"Mark Complete"}</button><button class="secondary" onclick="nextDay()">Next Day</button></div>
  </section>${renderExerciseGuides(x)}`;
 }
-function renderWorkout(){const x=currentWorkout();document.getElementById("workout").innerHTML=`<section class="card workout-mode"><div><p class="muted small">Guided session</p><div class="cue">${x.title}</div></div><div class="timer" id="timerDisplay">--:--</div><div class="progress-bar"><div id="workoutProgress" class="progress-fill"></div></div><p id="workoutMessage" class="muted">Tap start and keep this screen open during workouts.</p><div class="pill-row" style="justify-content:center"><span class="pill"><span id="awakeDot" class="dot"></span> <span id="awakeText">Screen awake not active</span></span></div><button onclick="startWorkout()">Start Today's Workout</button><button class="secondary" onclick="skipCurrent()">Skip Current Step</button><button class="secondary" onclick="stopWorkout()">Stop</button></section>`}
+function renderWorkout(){const x=currentWorkout();document.getElementById("workout").innerHTML=`<section class="card workout-mode"><div><p class="muted small">Guided session</p><div class="cue">${x.title}</div></div><div class="timer" id="timerDisplay">--:--</div><div class="progress-bar"><div id="workoutProgress" class="progress-fill"></div></div><p id="workoutMessage" class="muted">Tap start and keep this screen open during workouts.</p><div class="pill-row" style="justify-content:center"><span class="pill"><span id="awakeDot" class="dot"></span> <span id="awakeText">Screen awake not active</span></span></div><button onclick="startWorkout()">Start Today's Workout</button><button class="secondary" onclick="skipCurrent()">Skip Current Step</button><button id="pauseButton" class="secondary" onclick="togglePause()">Pause</button></section>`}
 function renderDashboard(){
  const weekDone=[1,2,3,4,5,6,7].filter(d=>state.completed.includes(`${state.week}-${d}`)).length;
  const badges=badgeList();
@@ -258,6 +257,7 @@ async function countdown(){setTimer("3");await cue("Starting in 3.");await sleep
 function timer(seconds,remainingBefore,total){
   return new Promise(resolve=>{
     let left=Math.max(0,seconds);
+    let elapsed=0;
     let resolved=false;
     skipCurrentTimer=false;
     clearInterval(activeTimer);
@@ -284,7 +284,8 @@ function timer(seconds,remainingBefore,total){
       }
 
       left--;
-      updateTimer(left,Math.max(0,remainingBefore-(seconds-left)),total);
+      elapsed++;
+      updateTimer(left,Math.max(0,remainingBefore-elapsed),total);
 
       if(left<=0){
         activeTimerResolve();
@@ -293,39 +294,36 @@ function timer(seconds,remainingBefore,total){
   });
 }
 function updateTimer(left,remaining,total){setTimer(formatTime(left));let done=total?((total-remaining)/total)*100:0;let bar=document.getElementById("workoutProgress");if(bar)bar.style.width=`${Math.max(0,Math.min(100,done))}%`}
-function stopWorkout(fullStop=true){
+function stopWorkout(fullStop=false){
+  // Internal safety only. This is not exposed as a workout-screen button.
   workoutAbort=!!fullStop;
-  skipCurrentTimer=true;
+  skipCurrentTimer=!!fullStop;
   workoutPaused=false;
 
-  if(activeTimerResolve){
-    activeTimerResolve();
-  }else{
-    clearInterval(activeTimer);
-    activeTimer=null;
-  }
-
-  if(window.speechSynthesis){
-    try{window.speechSynthesis.cancel()}catch(e){}
-  }
-
-  speechQueue=Promise.resolve();
-
   if(fullStop){
+    if(activeTimerResolve){
+      activeTimerResolve();
+    }else{
+      clearInterval(activeTimer);
+      activeTimer=null;
+    }
+
+    if(window.speechSynthesis){
+      try{window.speechSynthesis.cancel()}catch(e){}
+    }
+
+    speechQueue=Promise.resolve();
     releaseWakeLock();
     setAwake(false,"Screen awake not active");
-    setCue("Stopped");
-    setTimer("STOP");
-    setWorkoutMessage("Workout ended. Tap Start Today's Workout to begin again.");
+    setCue("Paused");
+    setTimer("PAUSE");
+    setWorkoutMessage("Workout paused.");
   }
+
   updatePauseButton();
 }
 
 function togglePause(){
-  if(!activeTimer && !activeTimerResolve){
-    return;
-  }
-
   workoutPaused=!workoutPaused;
 
   if(workoutPaused){
@@ -333,9 +331,9 @@ function togglePause(){
       try{window.speechSynthesis.cancel()}catch(e){}
     }
     setCue("Paused");
-    setWorkoutMessage("Paused. Tap Resume to continue.");
+    setWorkoutMessage("Paused. Tap Resume to continue from here.");
   }else{
-    setWorkoutMessage("Resuming...");
+    setWorkoutMessage("Resuming from where you paused...");
     cue("Resuming.");
   }
 
@@ -344,7 +342,7 @@ function togglePause(){
 
 function updatePauseButton(){
   const b=document.getElementById("pauseButton");
-  if(b) b.textContent=workoutPaused?"Resume":"Pause";
+  if(b) b.textContent=workoutPaused ? "Resume" : "Pause";
 }
 
 function skipCurrent(){
@@ -352,14 +350,14 @@ function skipCurrent(){
   workoutPaused=false;
   updatePauseButton();
 
-  setCue("Skipping");
-  setTimer("NEXT");
-  setWorkoutMessage("Moving to the next step...");
-
   if(window.speechSynthesis){
     try{window.speechSynthesis.cancel()}catch(e){}
   }
   speechQueue=Promise.resolve();
+
+  setCue("Next");
+  setTimer("NEXT");
+  setWorkoutMessage("Moving to the next step...");
 
   if(activeTimerResolve){
     activeTimerResolve();
