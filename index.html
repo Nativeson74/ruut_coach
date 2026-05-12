@@ -229,30 +229,30 @@ function startWorkout(){ if(settings.adaptive) openReadiness(); else beginWorkou
 function openReadiness(){showModal(`<h2>Readiness Check</h2><p class="muted" style="margin:10px 0 18px">How are you feeling right now?</p><button onclick="hideModal();beginWorkout('great')">Great</button><div style="height:8px"></div><button class="secondary" onclick="hideModal();beginWorkout('normal')">Good / Normal</button><div style="height:8px"></div><button class="gold" onclick="hideModal();beginWorkout('tired')">Tired or Sore</button><div style="height:8px"></div><button class="danger" onclick="hideModal();beginWorkout('back')">Back Tight</button>`)}
 async function beginWorkout(readiness){
  stopWorkout();const x=currentWorkout();document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));document.getElementById("workout").classList.add("active");document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));document.querySelectorAll("nav button")[1].classList.add("active");renderWorkout();requestWakeLock();
- if(readiness==="back"){speak("Back is tight. Switch to easy walking and mobility today.");setCue("Walk Only");setTimer("EASY");setWorkoutMessage("Back tight fallback: easy walk and mobility. Do not force the plan.");return}
+ if(readiness==="back"){await cue("Back is tight. Switch to easy walking and mobility today.");setCue("Walk Only");setTimer("EASY");setWorkoutMessage("Back tight fallback: easy walk and mobility. Do not force the plan.");return}
  if(x.type==="run")startRun(x,readiness);else if(x.type==="bodyweight")startStrength(x,readiness);else startRest(x)
 }
-function startRest(x){setWorkoutMessage("Rest day. Light walking only.");setCue("Rest Day");setTimer("REST");speak("Today is a rest day. Light walking only.")}
+function startRest(x){setWorkoutMessage("Rest day. Light walking only.");setCue("Rest Day");setTimer("REST");cue("Today is a rest day. Light walking only.")}
 async function startRun(x,readiness){
  let total=x.total*60;if(readiness==="tired")total=Math.round(total*.8);
  let remaining=total,half=Math.floor(total/2),halfSpoken=false;setCue("Warmup");setWorkoutMessage("Warm up first. This keeps you moving longer.");if(settings.warmup)await warmup();
- speak(phrase("start"));await countdown();
+ await cue(phrase("start"));await countdown();
  while(remaining>0){await runSegment("Run",x.runSeconds,remaining,total);remaining-=x.runSeconds;if(!halfSpoken&&settings.routeMode==="outback"&&remaining<=half){halfSpoken=true;showHalfway()}if(remaining<=0)break;await runSegment("Walk",x.walkSeconds,remaining,total);remaining-=x.walkSeconds;if(!halfSpoken&&settings.routeMode==="outback"&&remaining<=half){halfSpoken=true;showHalfway()}}
  if(settings.cooldown)await cooldown();finishWorkout()
 }
-async function runSegment(label,seconds,remaining,total){setCue(label.toUpperCase());setWorkoutMessage(label==="Run"?"Stay controlled. Smooth is fast.":"Recover. Keep moving.");speak(label==="Run"?phrase("run"):phrase("walk"));await timer(seconds,remaining,total)}
-function showHalfway(){setCue("TURN BACK");setWorkoutMessage("Halfway point. Turn back now.");speak(phrase("half"))}
+async function runSegment(label,seconds,remaining,total){setCue(label.toUpperCase());setWorkoutMessage(label==="Run"?"Stay controlled. Smooth is fast.":"Recover. Keep moving.");await cue(label==="Run"?phrase("run"):phrase("walk"));await timer(seconds,remaining,total)}
+function showHalfway(){setCue("TURN BACK");setWorkoutMessage("Halfway point. Turn back now.");cue(phrase("half"))}
 async function startStrength(x,readiness){
  setCue("Warmup"); if(settings.warmup) await warmup(); let rounds=x.rounds;if(readiness==="tired")rounds=Math.max(1,rounds-1);
  speak(`Starting bodyweight workout. ${rounds} rounds.`);await sleep(800);
- for(let r=1;r<=rounds;r++){setCue(`Round ${r}`);speak(template(phrase("round"),{n:r,t:rounds}));for(const e of x.exercises){setCue(e.name);if(e.mode==="timed"){setWorkoutMessage(`${e.name}. ${e.seconds} seconds.`);speak(template(phrase("timed"),{name:e.name,seconds:e.seconds}));await timer(e.seconds,e.seconds,e.seconds);speak(`${e.name} complete.`)}else{setTimer("DONE?");setWorkoutMessage(`${e.name}. ${e.reps}. Tap Done when finished.`);speak(template(phrase("rep"),{name:e.name,reps:e.reps}));await waitForDone(e.name,e.reps)}}}
+ for(let r=1;r<=rounds;r++){setCue(`Round ${r}`);speak(template(phrase("round"),{n:r,t:rounds}));for(const e of x.exercises){setCue(e.name);if(e.mode==="timed"){setWorkoutMessage(`${e.name}. ${e.seconds} seconds.`);await cue(template(phrase("timed"),{name:e.name,seconds:e.seconds}));await timer(e.seconds,e.seconds,e.seconds);await cue(`${e.name} complete.`)}else{setTimer("DONE?");setWorkoutMessage(`${e.name}. ${e.reps}. Tap Done when finished.`);await cue(template(phrase("rep"),{name:e.name,reps:e.reps}));await waitForDone(e.name,e.reps)}}}
  if(settings.cooldown) await cooldown();finishWorkout()
 }
-async function warmup(){speak("Warmup. March in place. Then loosen the hips and ankles.");setTimer("2:00");setWorkoutMessage("Warmup: march, leg swings, calf raises, easy movement.");await timer(120,120,120)}
-async function cooldown(){speak("Cooldown. Walk easy and bring your breathing down.");setCue("Cooldown");setWorkoutMessage("Cooldown: easy walk, calves, hips, hamstrings.");await timer(180,180,180)}
-function finishWorkout(){setCue("Complete");setTimer("DONE");setWorkoutMessage("Workout complete. Good work.");speak(phrase("finish"));markComplete(false);releaseWakeLock();showModal(`<h2>Workout Complete</h2><p class="muted" style="margin:10px 0 18px">${currentWorkout().day} — ${currentWorkout().title}</p><button onclick="hideModal();openJournalEntry()">Reflect</button><div style="height:8px"></div><button onclick="hideModal();nextDay()">Move to Next Day</button><div style="height:8px"></div><button class="secondary" onclick="hideModal()">Stay Here</button>`)}
+async function warmup(){await cue("Warmup. March in place. Then loosen the hips and ankles.");setTimer("2:00");setWorkoutMessage("Warmup: march, leg swings, calf raises, easy movement.");await timer(120,120,120)}
+async function cooldown(){await cue("Cooldown. Walk easy and bring your breathing down.");setCue("Cooldown");setWorkoutMessage("Cooldown: easy walk, calves, hips, hamstrings.");await timer(180,180,180)}
+async function finishWorkout(){setCue("Complete");setTimer("DONE");setWorkoutMessage("Workout complete. Good work.");await cue(phrase("finish"));markComplete(false);releaseWakeLock();showModal(`<h2>Workout Complete</h2><p class="muted" style="margin:10px 0 18px">${currentWorkout().day} — ${currentWorkout().title}</p><button onclick="hideModal();openJournalEntry()">Reflect</button><div style="height:8px"></div><button onclick="hideModal();nextDay()">Move to Next Day</button><div style="height:8px"></div><button class="secondary" onclick="hideModal()">Stay Here</button>`)}
 function waitForDone(name,reps){return new Promise(resolve=>{showModal(`<h2>${name}</h2><p class="muted" style="margin:10px 0 18px">${reps}</p><button onclick="resolveDone()">Done</button>`);window.resolveDone=()=>{hideModal();resolve()}})}
-async function countdown(){setTimer("3");speak("Starting in 3.");await sleep(1000);setTimer("2");speak("2.");await sleep(1000);setTimer("1");speak("1.");await sleep(1000);setTimer("GO");speak("Go.");await sleep(500)}
+async function countdown(){setTimer("3");await cue("Starting in 3.");await sleep(300);setTimer("2");await cue("2.");await sleep(300);setTimer("1");await cue("1.");await sleep(300);setTimer("GO");await cue("Go.");await sleep(250)}
 function timer(seconds,remainingBefore,total){return new Promise(resolve=>{let left=Math.max(0,seconds);clearInterval(activeTimer);updateTimer(left,remainingBefore,total);activeTimer=setInterval(()=>{left--;updateTimer(left,Math.max(0,remainingBefore-(seconds-left)),total);if(left<=0){clearInterval(activeTimer);activeTimer=null;resolve()}},1000)})}
 function updateTimer(left,remaining,total){setTimer(formatTime(left));let done=total?((total-remaining)/total)*100:0;let bar=document.getElementById("workoutProgress");if(bar)bar.style.width=`${Math.max(0,Math.min(100,done))}%`}
 function stopWorkout(){clearInterval(activeTimer);activeTimer=null;if(window.speechSynthesis)window.speechSynthesis.cancel();speechQueue=Promise.resolve();releaseWakeLock();setAwake(false,"Screen awake not active")}
@@ -273,9 +273,93 @@ function template(s,o){return s.replace(/\{(\w+)\}/g,(_,k)=>o[k]??"")}
 function populateVoices(){voices=window.speechSynthesis?window.speechSynthesis.getVoices():[]} if("speechSynthesis"in window){speechSynthesis.onvoiceschanged=populateVoices;populateVoices()}
 let speechQueue=Promise.resolve();
 let voicePrimedUntil=0;
-function applyVoice(u){u.rate=settings.voiceRate||.95;let v=voices.find(x=>x.voiceURI===settings.voiceURI);if(v)u.voice=v;return u}
-function primeVoice(){return new Promise(resolve=>{if(!("speechSynthesis"in window))return resolve();if(Date.now()<voicePrimedUntil)return resolve();voicePrimedUntil=Date.now()+45000;let p=applyVoice(new SpeechSynthesisUtterance("."));p.volume=0.01;p.rate=1;p.onend=()=>setTimeout(resolve,140);p.onerror=()=>resolve();window.speechSynthesis.speak(p);setTimeout(resolve,320)})}
-function speak(text){if(!("speechSynthesis"in window))return Promise.resolve();speechQueue=speechQueue.then(async()=>{await primeVoice();return new Promise(resolve=>{let u=applyVoice(new SpeechSynthesisUtterance(text));u.onend=resolve;u.onerror=resolve;window.speechSynthesis.speak(u);})});return speechQueue}
+let speechWatchdog=null;
+
+function applyVoice(u){
+  u.rate=settings.voiceRate||.95;
+  u.pitch=1;
+  u.volume=1;
+  let v=voices.find(x=>x.voiceURI===settings.voiceURI);
+  if(v)u.voice=v;
+  return u;
+}
+
+function startSpeechWatchdog(){
+  if(!("speechSynthesis" in window)) return;
+  if(speechWatchdog) return;
+  speechWatchdog=setInterval(()=>{
+    try{
+      if(window.speechSynthesis.paused) window.speechSynthesis.resume();
+    }catch(e){}
+  },2500);
+}
+
+function stopSpeechWatchdog(){
+  if(speechWatchdog){
+    clearInterval(speechWatchdog);
+    speechWatchdog=null;
+  }
+}
+
+function primeVoice(){
+  return new Promise(resolve=>{
+    if(!("speechSynthesis" in window)) return resolve();
+    startSpeechWatchdog();
+    try{ window.speechSynthesis.resume(); }catch(e){}
+    if(Date.now()<voicePrimedUntil) return resolve();
+    voicePrimedUntil=Date.now()+30000;
+
+    let p=applyVoice(new SpeechSynthesisUtterance("ready"));
+    p.volume=0.01;
+    p.rate=1;
+    let done=false;
+    const finish=()=>{ if(done) return; done=true; setTimeout(resolve,180); };
+    p.onend=finish;
+    p.onerror=finish;
+
+    try{ window.speechSynthesis.speak(p); }catch(e){ finish(); }
+    setTimeout(finish,700);
+  });
+}
+
+function speak(text){
+  if(!("speechSynthesis" in window)) return Promise.resolve();
+
+  const phrase=String(text||"").trim();
+  if(!phrase) return Promise.resolve();
+
+  speechQueue=speechQueue
+    .catch(()=>{})
+    .then(async()=>{
+      await primeVoice();
+
+      return new Promise(resolve=>{
+        let finished=false;
+        let maxTime=Math.max(2200, phrase.length*95);
+
+        const finish=()=>{ if(finished) return; finished=true; resolve(); };
+
+        try{
+          window.speechSynthesis.resume();
+          const u=applyVoice(new SpeechSynthesisUtterance(phrase));
+          u.onend=finish;
+          u.onerror=finish;
+          window.speechSynthesis.speak(u);
+
+          // Safari/iOS sometimes fails to fire onend during long sessions.
+          setTimeout(finish,maxTime);
+        }catch(e){
+          finish();
+        }
+      });
+    });
+
+  return speechQueue;
+}
+
+async function cue(text){
+  await speak(text);
+}
 function sleep(ms){return new Promise(r=>setTimeout(r,ms))}function formatTime(s){if(typeof s!=="number")return s;let m=Math.floor(s/60),sec=s%60;return`${m}:${String(sec).padStart(2,"0")}`}
 function showModal(html){document.getElementById("modalContent").innerHTML=html;document.getElementById("modal").classList.add("active")}function hideModal(){document.getElementById("modal").classList.remove("active")}function closeModal(e){if(e.target.id==="modal")hideModal()}
 renderAll();
