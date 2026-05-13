@@ -126,6 +126,87 @@ select,textarea,input{width:100%;border-radius:14px;padding:12px;background:#071
 .instruction-list{margin:0;padding-left:20px;display:grid;gap:6px;color:var(--soft)}
 .no-gif-note{padding:12px;border:1px solid var(--line);background:rgba(0,0,0,.18);border-radius:16px;color:var(--muted);font-size:13px}
 
+
+/* ---------- V8 RUN INTELLIGENCE + COCKPIT + PREMIUM UI ---------- */
+body{
+  background:
+    radial-gradient(circle at 12% -8%,rgba(99,230,190,.28),transparent 34%),
+    radial-gradient(circle at 90% 3%,rgba(122,162,255,.22),transparent 30%),
+    radial-gradient(circle at 50% 105%,rgba(255,209,102,.10),transparent 34%),
+    linear-gradient(160deg,#030611,#07101f 44%,#02030a)!important;
+}
+.card,.mode-banner{
+  box-shadow:0 28px 80px rgba(0,0,0,.46), inset 0 1px 0 rgba(255,255,255,.05);
+}
+.cockpit{
+  min-height:calc(100vh - 150px);
+  display:grid;
+  align-content:center;
+  gap:18px;
+  text-align:center;
+  padding:22px 18px;
+}
+.cockpit-top{
+  display:flex;
+  justify-content:center;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.cockpit .cue{
+  font-size:48px;
+  line-height:.94;
+}
+.cockpit .timer{
+  font-size:92px;
+  text-shadow:0 14px 45px rgba(0,0,0,.38);
+}
+.cockpit-message{
+  font-size:17px;
+  line-height:1.35;
+  color:var(--soft);
+  min-height:46px;
+}
+.cockpit-controls{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+}
+.cockpit-start{
+  grid-column:1/-1;
+}
+.phase-card{
+  border:1px solid var(--line);
+  border-radius:22px;
+  padding:14px;
+  background:rgba(255,255,255,.052);
+  text-align:left;
+}
+.phase-card strong{display:block;margin-bottom:4px}
+.reflection-grid{display:grid;gap:10px}
+.choice-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.choice-btn{background:rgba(255,255,255,.08);color:var(--text);border:1px solid var(--line);font-size:14px;padding:12px}
+.choice-btn.selected{background:var(--accent);color:#07101f}
+.run-mode-card{
+  border-radius:22px;
+  padding:14px;
+  border:1px solid var(--line);
+  background:rgba(255,255,255,.05);
+  display:grid;
+  gap:6px;
+}
+.route-tip{
+  padding:12px;
+  border-radius:18px;
+  background:rgba(99,230,190,.08);
+  border:1px solid rgba(99,230,190,.20);
+  color:var(--soft);
+}
+@media(max-width:390px){
+  .cockpit .cue{font-size:38px}
+  .cockpit .timer{font-size:72px}
+  .cockpit-controls{grid-template-columns:1fr}
+}
+
 </style>
 </head>
 <body>
@@ -727,7 +808,7 @@ renderToday = function(){
     <div class="pill-row"><span class="pill accent">Week ${state.week}</span><span class="pill">Day ${state.dayIndex}</span><span class="pill">${x.day}</span><span class="pill ${x.type}">${v6WorkoutTypeLabel(x.type)}</span><span class="pill">${settings.routeMode}</span></div>
     <div><p class="muted small">${w.theme}</p><h2>${x.title}</h2></div>
     <div class="grid two"><div class="stat"><span class="muted small">Time</span><strong>${x.time}</strong></div><div class="stat"><span class="muted small">Target</span><strong style="font-size:17px">${x.distance}</strong></div></div>
-    <div class="big-action-row"><button onclick="startWorkout()">Start Guided Workout</button><button class="secondary" onclick="openTodayBriefing()">Briefing</button></div>
+    <div class="big-action-row"><button onclick="startWorkout()">Start Guided Workout</button><button class="secondary" onclick="showTodayBriefing()">Briefing</button></div>
   </section>
   <section class="card hero">
     <h3>Workout Briefing</h3>
@@ -1060,6 +1141,272 @@ function openDemo(name){
     <div class="detail"><strong>Watch Out</strong><p class="muted">${g.mistake}</p></div>
     <div style="height:12px"></div>
     <button onclick="hideModal()">Done</button>`);
+}
+
+
+// ---------- V8: SMART RUN MODES, LONG RUN COACHING, REFLECTIONS, COCKPIT ----------
+let currentWorkoutSession = {
+  active:false,
+  type:null,
+  startedAt:null,
+  routeMode:null,
+  readiness:null,
+  longRun:false,
+  skipped:false
+};
+
+function routeModeDescription(mode){
+  const data={
+    outback:{title:"Out & Back",tip:"Halfway cue is active. Turn around when RUUT tells you."},
+    loop:{title:"Loop",tip:"No turnaround cue. RUUT will give time-remaining cues."},
+    treadmill:{title:"Treadmill",tip:"Use effort, not ego. RUUT will cue posture, breathing, and control."},
+    trail:{title:"Trail",tip:"Run the flats, control descents, and hike steep climbs when needed."}
+  };
+  return data[mode]||data.outback;
+}
+
+const runModeCueBank={
+  outback:["Out and back mode. I’ll tell you when to turn around.","Halfway cue is active today.","Run out easy. Come back steady."],
+  loop:["Loop mode. No turnaround cue today.","Stay relaxed and finish the loop clean.","I’ll call time remaining as you go."],
+  treadmill:["Treadmill mode. Keep posture tall and effort controlled.","Let the belt move. Stay relaxed.","No chasing speed. Smooth effort."],
+  trail:["Trail mode. Control the hills and stay light on your feet.","Hike steep climbs. Run smooth sections.","Eyes up. Quick feet. Easy effort."]
+};
+
+function smartRunCue(mode){
+  const arr=runModeCueBank[mode]||runModeCueBank.outback;
+  return arr[Math.floor(Math.random()*arr.length)];
+}
+
+function longRunPhase(total,remaining){
+  const elapsed=total-remaining;
+  const pct=elapsed/total;
+  if(pct<0.34)return {name:"First Third",message:"First third. Keep this almost too easy. You are banking patience."};
+  if(pct<0.67)return {name:"Middle Third",message:"Middle third. Settle in. Smooth breathing. Stay efficient."};
+  return {name:"Final Third",message:"Final third. Stay calm and finish proud. Do not force it."};
+}
+
+function isSaturdayLongRun(workout){
+  return workout.type==="run" && workout.day==="Sat";
+}
+
+// Replace workout cockpit UI
+renderWorkout = function(){
+  const x=currentWorkout();
+  const route=routeModeDescription(settings.routeMode);
+  document.getElementById("workout").innerHTML=`
+    <section class="card cockpit">
+      <div class="cockpit-top">
+        <span class="pill ${x.type}">${v6WorkoutTypeLabel? v6WorkoutTypeLabel(x.type) : x.type}</span>
+        <span class="pill">${route.title}</span>
+        ${isSaturdayLongRun(x)?'<span class="pill accent">Long Run</span>':''}
+      </div>
+      <div>
+        <p class="muted small">Workout Cockpit</p>
+        <div class="cue">${x.title}</div>
+      </div>
+      <div class="timer" id="timerDisplay">--:--</div>
+      <div class="progress-bar"><div id="workoutProgress" class="progress-fill"></div></div>
+      <p id="workoutMessage" class="cockpit-message">Tap start and keep this screen open during workouts.</p>
+      <div class="route-tip">${route.tip}</div>
+      <div class="pill-row" style="justify-content:center"><span class="pill"><span id="awakeDot" class="dot"></span> <span id="awakeText">Screen awake not active</span></span></div>
+      <div class="cockpit-controls">
+        <button class="cockpit-start" onclick="startWorkout()">Start Today's Workout</button>
+        <button class="secondary" onclick="skipCurrent()">Skip Current Step</button>
+        <button id="pauseButton" class="secondary" onclick="togglePause()">Pause</button>
+      </div>
+    </section>`;
+};
+
+// Replace settings with clearer route mode details while preserving other options
+const oldOpenSettingsV8 = openSettings;
+openSettings = function(){
+  populateVoices();
+  let opts=voices.map(v=>`<option value="${v.voiceURI}" ${settings.voiceURI===v.voiceURI?"selected":""}>${v.name} ${v.lang}</option>`).join("");
+  showModal(`<h2>Settings</h2><p class="muted" style="margin:8px 0 12px">Voice, route intelligence, adaptive coaching, and workout flow.</p>
+  <label class="small muted">Coach Style</label><select id="coachStyle"><option value="trail" ${settings.coachStyle==="trail"?"selected":""}>Trail Guide</option><option value="calm" ${settings.coachStyle==="calm"?"selected":""}>Calm Coach</option><option value="tough" ${settings.coachStyle==="tough"?"selected":""}>Tough Love</option></select>
+  <div style="height:10px"></div><label class="small muted">Voice</label><select id="voiceSelect"><option value="">System Default</option>${opts}</select>
+  <div style="height:10px"></div><label class="small muted">Voice Speed</label><select id="voiceRate"><option value=".85" ${settings.voiceRate==.85?"selected":""}>Slow</option><option value=".95" ${settings.voiceRate==.95?"selected":""}>Normal</option><option value="1.05" ${settings.voiceRate==1.05?"selected":""}>Brisk</option></select>
+  <div style="height:10px"></div><label class="small muted">Run Route Mode</label><select id="routeMode"><option value="outback" ${settings.routeMode==="outback"?"selected":""}>Out & Back: Halfway Turnaround</option><option value="loop" ${settings.routeMode==="loop"?"selected":""}>Loop: Time Remaining Cues</option><option value="treadmill" ${settings.routeMode==="treadmill"?"selected":""}>Treadmill: Posture + Effort Cues</option><option value="trail" ${settings.routeMode==="trail"?"selected":""}>Trail: Terrain Coaching</option></select>
+  <div style="height:10px"></div><label><input id="adaptive" type="checkbox" ${settings.adaptive?"checked":""}> Adaptive readiness check</label><br><label><input id="warmup" type="checkbox" ${settings.warmup?"checked":""}> Warmup coaching</label><br><label><input id="cooldown" type="checkbox" ${settings.cooldown?"checked":""}> Cooldown coaching</label><br><label><input id="keepAwake" type="checkbox" ${settings.keepAwake?"checked":""}> Try to keep screen awake</label>
+  <div class="detail" style="margin-top:12px"><strong>Route Intelligence</strong><p class="muted">Out & Back gives a turn-around cue. Loop gives time-left cues. Trail gives terrain coaching. Treadmill gives posture and effort cues.</p></div>
+  <div style="height:12px"></div><button onclick="saveSettingsFromModal()">Save Settings</button><div style="height:8px"></div><button class="secondary" onclick="testVoice()">Test Voice</button><div style="height:8px"></div><button class="danger" onclick="confirmReset()">Reset Program</button>`);
+};
+
+// Replace startRun with smarter route and long-run logic
+startRun = async function(x,readiness){
+  let total=x.total*60;
+  if(readiness==="tired")total=Math.round(total*.8);
+  let remaining=total,half=Math.floor(total/2),halfSpoken=false;
+  let quarterSpoken=false, fifteenSpoken=false, fiveSpoken=false;
+  let phaseName="";
+  currentWorkoutSession={active:true,type:"run",startedAt:new Date().toISOString(),routeMode:settings.routeMode,readiness,longRun:isSaturdayLongRun(x),skipped:false};
+
+  setCue("Warmup");
+  setWorkoutMessage("Warm up first. This keeps you moving longer.");
+  if(settings.warmup)await warmup();
+  if(workoutAbort)return;
+
+  const route=routeModeDescription(settings.routeMode);
+  await cue(`${route.title} mode. ${route.tip}`);
+  if(isSaturdayLongRun(x)){
+    await cue("Long run day. First third easy. Middle third steady. Final third proud.");
+  }
+
+  await cue(phrase("start"));
+  await countdown();
+
+  while(remaining>0 && !workoutAbort){
+    if(isSaturdayLongRun(x)){
+      const phase=longRunPhase(total,remaining);
+      if(phase.name!==phaseName){
+        phaseName=phase.name;
+        setWorkoutMessage(phase.message);
+        await cue(phase.message);
+      }
+    }
+
+    await runSegment("Run",x.runSeconds,remaining,total);
+    if(workoutAbort)return;
+    remaining-=x.runSeconds;
+
+    const elapsed=total-remaining;
+
+    if(settings.routeMode==="outback" && !halfSpoken && remaining<=half){
+      halfSpoken=true;
+      showHalfway();
+    }
+
+    if(settings.routeMode==="loop"){
+      if(!quarterSpoken && elapsed>=total*.25){quarterSpoken=true;await cue("One quarter complete. Stay smooth.");}
+      if(!halfSpoken && elapsed>=total*.50){halfSpoken=true;await cue("Halfway through the workout.");}
+      if(!fifteenSpoken && remaining<=900 && total>1200){fifteenSpoken=true;await cue("Fifteen minutes left.");}
+      if(!fiveSpoken && remaining<=300){fiveSpoken=true;await cue("Five minutes left. Finish clean.");}
+    }
+
+    if(settings.routeMode==="trail" && Math.random()<0.22){
+      await cue("Trail reminder. Hike steep climbs and run the smoother ground.");
+    }
+
+    if(settings.routeMode==="treadmill" && Math.random()<0.22){
+      await cue("Treadmill check. Tall posture, loose shoulders, steady breathing.");
+    }
+
+    if(remaining<=0)break;
+
+    await runSegment("Walk",x.walkSeconds,remaining,total);
+    if(workoutAbort)return;
+    remaining-=x.walkSeconds;
+
+    if(settings.routeMode==="outback" && !halfSpoken && remaining<=half){
+      halfSpoken=true;
+      showHalfway();
+    }
+  }
+
+  if(settings.cooldown)await cooldown();
+  if(workoutAbort)return;
+  finishWorkout();
+};
+
+// Replace finishWorkout with fuller reflection flow
+finishWorkout = async function(){
+  setCue("Complete");
+  setTimer("DONE");
+  setWorkoutMessage("Workout complete. Good work.");
+  await cue(phrase("finish"));
+  markComplete(false);
+  releaseWakeLock();
+  showModal(`<h2>Workout Complete</h2><p class="muted" style="margin:10px 0 18px">${currentWorkout().day} — ${currentWorkout().title}</p><button onclick="hideModal();openReflectionV8()">Reflect</button><div style="height:8px"></div><button onclick="hideModal();nextDay()">Move to Next Day</button><div style="height:8px"></div><button class="secondary" onclick="hideModal()">Stay Here</button>`);
+};
+
+function selectChoice(group,value){
+  document.querySelectorAll(`[data-choice="${group}"]`).forEach(b=>b.classList.remove("selected"));
+  const el=document.querySelector(`[data-choice="${group}"][data-value="${value}"]`);
+  if(el)el.classList.add("selected");
+  const hidden=document.getElementById(group+"Value");
+  if(hidden)hidden.value=value;
+}
+
+function openReflectionV8(){
+  const x=currentWorkout();
+  showModal(`<h2>Workout Reflection</h2><p class="muted" style="margin:8px 0 12px">${x.day} — ${x.title}</p>
+  <div class="reflection-grid">
+    <div><strong>How did it feel?</strong><div class="choice-grid" style="margin-top:8px">
+      ${["Easy","On Target","Hard","Brutal"].map(v=>`<button class="choice-btn" data-choice="feel" data-value="${v}" onclick="selectChoice('feel','${v}')">${v}</button>`).join("")}
+    </div><input id="feelValue" type="hidden" value=""></div>
+    <div><strong>Any pain?</strong><div class="choice-grid" style="margin-top:8px">
+      ${["None","Back","Knees","Calves","Hips","Other"].map(v=>`<button class="choice-btn" data-choice="pain" data-value="${v}" onclick="selectChoice('pain','${v}')">${v}</button>`).join("")}
+    </div><input id="painValue" type="hidden" value=""></div>
+    <div><strong>Notes</strong><textarea id="note" placeholder="Route, weather, soreness, what felt good, what needs attention..."></textarea></div>
+    <button onclick="saveReflectionV8()">Save Reflection</button>
+    <button class="secondary" onclick="hideModal()">Skip</button>
+  </div>`);
+}
+
+function saveReflectionV8(){
+  const x=currentWorkout();
+  state.journal=state.journal||[];
+  state.journal.push({
+    date:new Date().toLocaleDateString(),
+    iso:new Date().toISOString(),
+    workout:`W${state.week} D${state.dayIndex} ${x.title}`,
+    type:x.type,
+    routeMode:settings.routeMode,
+    feel:document.getElementById("feelValue").value||"Not rated",
+    pain:document.getElementById("painValue").value||"Not recorded",
+    note:document.getElementById("note").value||""
+  });
+  saveState();
+  hideModal();
+}
+
+// Upgrade journal rendering to show pain + route mode
+renderJournal = function(){
+  const entries=(state.journal||[]).slice().reverse();
+  document.getElementById("journal").innerHTML=`<section class="card hero"><h2>Journal</h2><button onclick="openReflectionV8()">Add Reflection</button><div class="list">${entries.map(j=>`<div class="row" style="align-items:flex-start"><div><strong>${j.date}</strong><p class="muted small">${j.workout}</p><p style="margin-top:6px"><strong>Feel:</strong> ${j.feel||""} ${j.pain?`• <strong>Pain:</strong> ${j.pain}`:""}</p><p class="muted small">${j.routeMode?`Route: ${j.routeMode}`:""}</p><p class="muted small">${j.note||""}</p></div></div>`).join("")||'<p class="muted">No reflections yet.</p>'}</div></section>`;
+};
+
+// Add pain-aware readiness suggestion to Today briefing
+const oldOpenTodayBriefingV8 = openTodayBriefing;
+openTodayBriefing = function(){
+  const x=currentWorkout();
+  const recentPain=(state.journal||[]).slice(-3).map(j=>j.pain).filter(p=>p&&p!=="None"&&p!=="Not recorded");
+  const warning=recentPain.length?`<div class="timeline-item"><span class="timeline-dot" style="background:var(--danger)"></span><div><strong>Recent Pain Flag</strong><p class="muted small">Recent logs mention: ${[...new Set(recentPain)].join(", ")}. Consider recovery mode if this shows up today.</p></div></div>`:"";
+  showModal(`<h2>${x.title}</h2><p class="muted" style="margin:8px 0 12px">${x.day} • ${x.time} • ${x.structure}</p>
+  <div class="timeline">
+    <div class="timeline-item"><span class="timeline-dot"></span><div><strong>Purpose</strong><p class="muted small">${x.purpose}</p></div></div>
+    <div class="timeline-item"><span class="timeline-dot"></span><div><strong>Route Mode</strong><p class="muted small">${routeModeDescription(settings.routeMode).tip}</p></div></div>
+    <div class="timeline-item"><span class="timeline-dot"></span><div><strong>Effort</strong><p class="muted small">${x.effort}</p></div></div>
+    <div class="timeline-item"><span class="timeline-dot"></span><div><strong>Success Standard</strong><p class="muted small">${x.success}</p></div></div>
+    ${warning}
+    <div class="timeline-item"><span class="timeline-dot"></span><div><strong>Watch Out</strong><p class="muted small">${x.caution}</p></div></div>
+  </div><div style="height:12px"></div><button onclick="hideModal();startWorkout()">Start</button><div style="height:8px"></div><button class="secondary" onclick="hideModal()">Close</button>`);
+};
+
+
+// ---------- V8.1 SAFE BRIEFING FIX ----------
+function showTodayBriefing(){
+  const x=currentWorkout();
+  const route = (typeof routeModeDescription === "function") ? routeModeDescription(settings.routeMode) : {tip:"Use the selected route mode."};
+  const recentPain=(state.journal||[]).slice(-3).map(j=>j.pain).filter(p=>p&&p!=="None"&&p!=="Not recorded");
+  const warning=recentPain.length
+    ? `<div class="timeline-item"><span class="timeline-dot" style="background:var(--danger)"></span><div><strong>Recent Pain Flag</strong><p class="muted small">Recent logs mention: ${[...new Set(recentPain)].join(", ")}. Consider recovery mode if this shows up today.</p></div></div>`
+    : "";
+
+  showModal(`<h2>${x.title}</h2>
+    <p class="muted" style="margin:8px 0 12px">${x.day} • ${x.time} • ${x.structure}</p>
+    <div class="timeline">
+      <div class="timeline-item"><span class="timeline-dot"></span><div><strong>Purpose</strong><p class="muted small">${x.purpose||"Complete today's workout with control."}</p></div></div>
+      <div class="timeline-item"><span class="timeline-dot"></span><div><strong>Route Mode</strong><p class="muted small">${route.tip}</p></div></div>
+      <div class="timeline-item"><span class="timeline-dot"></span><div><strong>Effort</strong><p class="muted small">${x.effort||"Controlled effort."}</p></div></div>
+      <div class="timeline-item"><span class="timeline-dot"></span><div><strong>Success Standard</strong><p class="muted small">${x.success||"Finish with good form and discipline."}</p></div></div>
+      ${warning}
+      <div class="timeline-item"><span class="timeline-dot"></span><div><strong>Watch Out</strong><p class="muted small">${x.caution||"Sharp pain means stop."}</p></div></div>
+    </div>
+    <div style="height:12px"></div>
+    <button onclick="hideModal();startWorkout()">Start</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="hideModal()">Close</button>`);
 }
 
 renderAll();
