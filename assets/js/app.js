@@ -1813,4 +1813,36 @@ waitForDone = function(name,reps){
   return waitForDoneV93Base(name,reps);
 };
 
+
+// ---------- V9.3.5: REMOVE TRANSITION COUNTDOWNS ENTIRELY ----------
+// No visual countdown. No vocal countdown. Segment timers remain exact.
+// The app now speaks only the action cue at the actual transition.
+transitionCountdownV91 = async function(kind,label){
+  return;
+};
+
+runSegmentV91 = async function(label,seconds,remaining,total){
+  const isRun=label==="Run";
+
+  setCue(label.toUpperCase());
+  setWorkoutMessage(
+    isRun
+      ? "Run now. Smooth stride. Stay controlled."
+      : "Walk now. Recover and keep moving."
+  );
+
+  await cue(isRun ? v91Pick("runStart") : v91Pick("walkStart"));
+  if(workoutAbort) return;
+
+  return timer(seconds,remaining,total);
+};
+
+// Keep the initial start clean too.
+countdown = async function(){
+  setTimer("GO");
+  setWorkoutMessage("Starting workout.");
+  await cue("Go.");
+  await sleep(250);
+};
+
 renderAll();
