@@ -182,7 +182,7 @@ async function warmup(){await cue("Warmup. March in place. Then loosen the hips 
 async function cooldown(){await cue("Cooldown. Walk easy and bring your breathing down. Tap skip current step if you are done.");setCue("Cooldown");setWorkoutMessage("Cooldown: easy walk, calves, hips, hamstrings. Tap Skip Current Step to finish.");await timer(180,180,180)}
 async function finishWorkout(){setCue("Complete");setTimer("DONE");setWorkoutMessage("Workout complete. Good work.");await cue(phrase("finish"));markComplete(false);releaseWakeLock();showModal(`<h2>Workout Complete</h2><p class="muted" style="margin:10px 0 18px">${currentWorkout().day} — ${currentWorkout().title}</p><button onclick="hideModal();openJournalEntry()">Reflect</button><div style="height:8px"></div><button onclick="hideModal();nextDay()">Move to Next Day</button><div style="height:8px"></div><button class="secondary" onclick="hideModal()">Stay Here</button>`)}
 function waitForDone(name,reps){return new Promise(resolve=>{showModal(`<h2>${name}</h2><p class="muted" style="margin:10px 0 18px">${reps}</p><button onclick="resolveDone()">Done</button>`);window.resolveDone=()=>{hideModal();resolve()}})}
-async function countdown(){setTimer("3");await cue("Starting in 3.");await sleep(300);setTimer("2");await cue("2.");await sleep(300);setTimer("1");await cue("1.");await sleep(300);setTimer("GO");await cue("Go.");await sleep(250)}
+async function countdown(){setTimer("3");setWorkoutMessage("Starting soon.");await sleep(700);setTimer("2");await sleep(700);setTimer("1");await sleep(700);setTimer("GO");await cue("Go.");await sleep(250)}
 function timer(seconds,remainingBefore,total){
   return new Promise(resolve=>{
     let left=Math.max(0,seconds);
@@ -1757,7 +1757,7 @@ transitionCountdownV91 = async function(kind,label){
       try{
         if(navigator.vibrate) navigator.vibrate(80);
       }catch(e){}
-      await cue(String(n));
+      // Visual countdown only. No spoken countdown numbers.
     }
     await new Promise(r=>setTimeout(r,1000));
   }
