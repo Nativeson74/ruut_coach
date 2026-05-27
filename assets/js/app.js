@@ -5,7 +5,7 @@ const DAYS=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
 const voicePacks={
  trail:{start:["Trail guide is on. Ease into it.","Set your pace. Let the body warm up.","Step out steady. We’re moving."],run:["Run smooth. Light feet.","Start running. Flow with the road.","Run easy. Keep your shoulders loose."],walk:["Walk now. Take in the air.","Recover here. Stay present.","Walk it out. Breathe deep."],half:["Halfway point. Turn back toward home.","Halfway. Time to retrace your path.","Turn around now. Nice and steady back."],finish:["Workout complete. Good miles today.","Done. Another honest effort logged.","Finished. That one counts."],round:["Round {n} of {t}. Stay smooth.","Round {n}. Clean movement."],rep:["{name}. {reps}. Smooth and controlled."],timed:["{name}. {seconds} seconds. Breathe through it."]},
- tough:{start:["Fucking Lock in. We start now.","No drama. Do the damn work.","Feet moving. Finish what you started."],run:["Run. Stay disciplined.","Pick it up. Controlled pressure.","Run now. Strong, not reckless."],walk:["Walk. Recover like you mean it.","Breathe. You are not quitting.","Walk now. Reset and get ready."],half:["Halfway. Turn back and finish the job.","Halfway point. Earn the second half.","Turn around. Now bring it home."],finish:["Workout complete. You did the work.","Done. That is discipline.","Finished. Stack the win."],round:["Round {n} of {t}. Don't rush the reps.","Round {n}. Clean reps. Strong mind."],rep:["{name}. {reps}. Make them count."],timed:["{name}. {seconds} seconds. Hold steady."]},
+ tough:{start:["Lock in. We start now.","No drama. Do the work.","Feet moving. Finish what you started."],run:["Run. Stay disciplined.","Pick it up. Controlled pressure.","Run now. Strong, not reckless."],walk:["Walk. Recover like you mean it.","Breathe. You are not quitting.","Walk now. Reset and get ready."],half:["Halfway. Turn back and finish the job.","Halfway point. Earn the second half.","Turn around. Now bring it home."],finish:["Workout complete. You did the work.","Done. That is discipline.","Finished. Stack the win."],round:["Round {n} of {t}. Don't rush the reps.","Round {n}. Clean reps. Strong mind."],rep:["{name}. {reps}. Make them count."],timed:["{name}. {seconds} seconds. Hold steady."]},
  calm:{start:["Let's begin. Smooth and steady.","Settle in. Keep it controlled.","Here we go. Easy effort first."],run:["Start running. Stay relaxed.","Run easy. Find your rhythm.","Move steady. No ego."],walk:["Walk now. Control your breathing.","Recover here. Keep moving.","Walk it out. Reset your breath."],half:["Halfway point. Turn back now.","You're halfway. Turn around and bring it home.","Halfway. Time to head back."],finish:["Workout complete. Good work.","Done. Strong work today.","That’s it. You showed up and finished."],round:["Round {n} of {t}. Move clean.","Round {n} of {t}. Stay sharp."],rep:["{name}. {reps}. Good form first."],timed:["{name}. {seconds} seconds. Starting now."]}
 };
 
@@ -1636,5 +1636,158 @@ testVoice = function(){
   cue(`${style} selected. This voice will still use the iPhone browser voice, but the coaching language is now more distinct.`);
 };
 
+
+
+// ---------- V9.3 WORKOUT COCKPIT POLISH ----------
+const V93_COCKPIT_CSS = `
+<style id="v93-cockpit-style">
+.cockpit{
+  min-height:calc(100vh - 130px)!important;
+  display:flex!important;
+  flex-direction:column!important;
+  justify-content:center!important;
+  gap:18px!important;
+}
+.cockpit .timer{
+  font-size:110px!important;
+  line-height:.9!important;
+  letter-spacing:-4px!important;
+  font-weight:900!important;
+  text-shadow:0 10px 40px rgba(0,0,0,.45)!important;
+}
+.cockpit .cue{
+  font-size:44px!important;
+  font-weight:800!important;
+}
+.cockpit-message{
+  font-size:18px!important;
+  line-height:1.4!important;
+  min-height:60px!important;
+}
+.v93-stage{
+  border-radius:20px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.04);
+  padding:14px;
+}
+.v93-pulse{
+  animation:v93pulse 1.2s ease-in-out infinite alternate;
+}
+@keyframes v93pulse{
+  from{transform:scale(1)}
+  to{transform:scale(1.03)}
+}
+.v93-countdown{
+  font-size:72px;
+  font-weight:900;
+  opacity:.95;
+}
+.v93-mini{
+  font-size:13px;
+  opacity:.7;
+  letter-spacing:1px;
+  text-transform:uppercase;
+}
+</style>
+`;
+
+(function installV93Style(){
+  if(!document.getElementById("v93-cockpit-style")){
+    document.head.insertAdjacentHTML("beforeend",V93_COCKPIT_CSS);
+  }
+})();
+
+function v93FlashCue(textCue,textMsg){
+  setCue(textCue);
+  setWorkoutMessage(textMsg);
+  const el=document.getElementById("timerDisplay");
+  if(el){
+    el.classList.remove("v93-pulse");
+    void el.offsetWidth;
+    el.classList.add("v93-pulse");
+  }
+}
+
+const renderWorkoutV93Base = renderWorkout;
+renderWorkout = function(){
+  renderWorkoutV93Base();
+  const workout=document.getElementById("workout");
+  if(workout){
+    const cockpit=workout.querySelector(".cockpit");
+    if(cockpit){
+      cockpit.insertAdjacentHTML("afterbegin",`
+        <div class="v93-stage">
+          <div class="v93-mini">Workout Cockpit Active</div>
+          <div class="progress-bar">
+            <div id="v93Intensity" class="progress-fill" style="width:0%"></div>
+          </div>
+        </div>
+      `);
+    }
+  }
+};
+
+const timerV93Base = timer;
+timer = async function(seconds,remaining,total){
+  const intensity=document.getElementById("v93Intensity");
+  if(intensity && total){
+    const pct=Math.max(0,Math.min(100,((total-remaining)/total)*100));
+    intensity.style.width=pct+"%";
+  }
+  return timerV93Base(seconds,remaining,total);
+};
+
+const transitionCountdownV93Base = transitionCountdownV91;
+transitionCountdownV91 = async function(kind,label){
+  if(settings.transitionCountdown===false) return;
+  const isRun=kind==="run";
+  const isWalk=kind==="walk";
+  const title=isRun?"RUN":isWalk?"WALK":"NEXT";
+  const detail=isRun?"Prepare to move.":isWalk?"Recover with control.":`Next movement: ${label}`;
+  v93FlashCue(title,detail);
+
+  for(let n=5;n>=1;n--){
+    if(workoutAbort || skipCurrentTimer) return;
+    setTimer(String(n));
+    const td=document.getElementById("timerDisplay");
+    if(td){
+      td.classList.add("v93-countdown");
+    }
+    if(n<=3){
+      try{
+        if(navigator.vibrate) navigator.vibrate(80);
+      }catch(e){}
+      await cue(String(n));
+    }
+    await sleep(1000);
+  }
+
+  const td=document.getElementById("timerDisplay");
+  if(td){
+    td.classList.remove("v93-countdown");
+  }
+};
+
+const runSegmentV93Base = runSegmentV91;
+runSegmentV91 = async function(label,seconds,remaining,total){
+  const isRun=label==="Run";
+  await transitionCountdownV91(isRun?"run":"walk",label);
+  if(workoutAbort) return;
+
+  v93FlashCue(
+    isRun?"RUN":"RECOVER",
+    isRun
+      ?"Smooth stride. Relax the jaw and shoulders."
+      :"Control your breathing and stay moving."
+  );
+
+  return runSegmentV93Base(label,seconds,remaining,total);
+};
+
+const waitForDoneV93Base = waitForDone;
+waitForDone = function(name,reps){
+  v93FlashCue(name.toUpperCase(),`${reps} reps. Quality over speed.`);
+  return waitForDoneV93Base(name,reps);
+};
 
 renderAll();
