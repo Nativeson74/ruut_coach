@@ -1547,4 +1547,94 @@ finishWorkout = async function(){
   return finishWorkoutV9Base();
 };
 
+
+// ---------- V9.2: MORE DISTINCT HUMAN COACHING LANGUAGE ----------
+const V92_COACH = {
+  trail: {
+    identity:"Trail Guide",
+    start:["Trail Guide is on. Start easy, breathe through the nose if you can, and let the body wake up.","This is Trail Guide mode. Smooth first, strong later. Settle into the road.","Trail Guide here. No rush. Find the rhythm and let the workout come to you."],
+    runStart:["Run now. Light feet, quiet shoulders, eyes up. Let the pace come naturally.","Ease into the run. Think smooth stride, calm breath, soft landing.","Start running. Float through the first part. Stay patient and clean."],
+    walkStart:["Walk now. Let the breathing drop. Shake the arms loose and stay tall.","Recovery walk. Keep moving, loosen the hands, bring the breath back down.","Walk it out. Deep breath in, long breath out. You're resetting for the next push."],
+    transitionRun:["Run starts in five. Stand tall, quick feet, smooth first steps.","Five seconds to run. Eyes up, shoulders loose, feet light.","Run coming up. Settle your posture and move with the terrain."],
+    transitionWalk:["Walk break in five. Finish this section clean and controlled.","Five seconds to walk. Stay smooth to the line, then recover.","Walk coming up. No collapse. Ease down with control."],
+    strengthNext:["Next movement is {name}. Set your stance, breathe, and make the reps clean.","Coming up: {name}. Smooth form, steady tempo, no sloppy reps.","Next: {name}. Own the setup before you start moving."],
+    longFirst:["First third of the long run. This should feel almost too easy. You are buying the finish right now."],
+    longMiddle:["Middle third. Settle in. This is steady patience, not a race."],
+    longFinal:["Final third. Stay calm. Bring it home with clean form and a proud finish."],
+    routeTrail:["Trail reminder. Hike the steep climbs, run the smooth ground, and protect your legs on descents."],
+    routeTreadmill:["Treadmill check. Stand tall, relax your jaw, keep the stride quiet."],
+    finish:["Good work. That was honest training. Log it and carry the win forward.","Finished. Another solid brick in the wall.","Workout complete. You kept your word today."]
+  },
+  tough: {
+    identity:"Tough Love",
+    start:["Tough Love is on. No negotiating with the workout. Start controlled and finish what you came to do.","This is the work. No drama, no shortcuts. Start moving.","Tough Love mode. You don't need perfect. You need honest effort."],
+    runStart:["Run now. No drifting. Keep your form and do the work.","Move. Strong, controlled, disciplined. Stay in it.","Run. Quiet the excuses. Control the breathing. Keep your promise."],
+    walkStart:["Walk. Recover, don't quit. Use this break like an athlete.","Walk now. Breathe, reset, and get ready to go again.","Recovery. You earned it, but you are not done."],
+    transitionRun:["Five seconds. Get ready to work. Tall chest, strong mind.","Run starts in five. Lock in. No sloppy first steps.","Five seconds to run. Don't think about it. Move."],
+    transitionWalk:["Walk break in five. Finish this piece strong.","Five seconds. Hold the line until the break.","Walk coming. Earn it to the bell."],
+    strengthNext:["Next: {name}. No sloppy reps. Make every rep count.","{name} next. Set your body and do it right.","Set up for {name}. Discipline over speed."],
+    longFirst:["First third. Stay controlled. Don't burn matches like a rookie."],
+    longMiddle:["Middle third. This is where discipline matters. Stay steady."],
+    longFinal:["Final third. Finish the job. Strong mind, clean form."],
+    routeTrail:["Trail rule. Hike the steep stuff and attack the runnable ground with control."],
+    routeTreadmill:["Treadmill check. Stand tall. Don't get lazy just because the belt is moving."],
+    finish:["Done. That's discipline.","Workout complete. You did the work.","Finished. Stack the win and move on."]
+  },
+  calm: {
+    identity:"Calm Coach",
+    start:["Calm Coach is on. Begin gently. Smooth breath, steady body, quiet mind.","Start with control. You are not chasing. You are building.","Calm Coach mode. Easy first. Let the nervous system settle."],
+    runStart:["Begin running. Smooth breathing, relaxed shoulders, steady effort.","Start running. Keep it calm, controlled, and sustainable.","Run now. Easy rhythm, soft feet, patient pace."],
+    walkStart:["Walk now. Let your breath come back down.","Recover here. Calm and steady. No rush.","Walk and reset. Long exhale, loose shoulders."],
+    transitionRun:["Run begins in five. Prepare gently and stay relaxed.","Five seconds to run. Keep the first steps easy.","Running soon. Smooth and patient."],
+    transitionWalk:["Walk begins in five. Ease into recovery.","Five seconds to walk. Stay composed to the end.","Recovery is coming. Finish calmly."],
+    strengthNext:["Next movement: {name}. Take your time and move well.","Prepare for {name}. Good form first.","{name} next. Smooth and steady."],
+    longFirst:["First third. Keep the effort very easy. You should feel held back."],
+    longMiddle:["Middle third. Settle into your rhythm and conserve energy."],
+    longFinal:["Final third. Stay composed and finish well."],
+    routeTrail:["Trail reminder. Move with the terrain, not against it."],
+    routeTreadmill:["Treadmill check. Gentle posture, steady breath, quiet stride."],
+    finish:["Workout complete. Well done.","Finished. Good steady work today.","Done. You trained with control."]
+  }
+};
+
+function v92Pick(key){
+  const pack = V92_COACH[settings.coachStyle] || V92_COACH.trail;
+  const arr = pack[key] || V92_COACH.trail[key] || [""];
+  return arr[Math.floor(Math.random()*arr.length)];
+}
+
+function v92Template(s,o){
+  return String(s).replace(/\{(\w+)\}/g,(_,k)=>o[k]??"");
+}
+
+// Override the v9.1 picker so all existing workout logic gets stronger language.
+function v91Pick(key){ return v92Pick(key); }
+function v91Template(s,o){ return v92Template(s,o); }
+
+// Make startup and warmup noticeably more conversational.
+const warmupBaseV92 = warmup;
+warmup = async function(){
+  const style = (V92_COACH[settings.coachStyle] || V92_COACH.trail).identity;
+  await cue(`${style} loaded. Warmup starts now. March easy, loosen the hips, and wake up the ankles. Tap skip current step if you want to move ahead.`);
+  setTimer("2:00");
+  setWorkoutMessage(`${style} loaded. Warmup: march, loosen hips, wake up ankles. Tap Skip Current Step to move ahead.`);
+  await timer(120,120,120);
+};
+
+const cooldownBaseV92 = cooldown;
+cooldown = async function(){
+  await cue("Cooldown starts now. Walk easy, bring the heart rate down, and let the body know the hard work is finished.");
+  setCue("Cooldown");
+  setWorkoutMessage("Cooldown: easy walk, breathe down, then stretch. Tap Skip Current Step to finish.");
+  await timer(180,180,180);
+};
+
+// Make the test voice prove the style changed.
+testVoice = function(){
+  saveSettingsFromModal();
+  const style = (V92_COACH[settings.coachStyle] || V92_COACH.trail).identity;
+  cue(`${style} selected. This voice will still use the iPhone browser voice, but the coaching language is now more distinct.`);
+};
+
+
 renderAll();
