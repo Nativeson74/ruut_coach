@@ -1743,7 +1743,7 @@ transitionCountdownV91 = async function(kind,label){
   const isRun=kind==="run";
   const isWalk=kind==="walk";
   const title=isRun?"RUN":isWalk?"WALK":"NEXT";
-  const detail=isRun?"Prepare to move.":isWalk?"Recover with control.":`Next movement: ${label}`;
+  const detail=isRun?"Final five seconds before the run.":isWalk?"Final five seconds before the walk.":`Next movement: ${label}`;
   v93FlashCue(title,detail);
 
   for(let n=5;n>=1;n--){
@@ -1771,8 +1771,7 @@ transitionCountdownV91 = async function(kind,label){
 const runSegmentV93Base = runSegmentV91;
 runSegmentV91 = async function(label,seconds,remaining,total){
   const isRun=label==="Run";
-  await transitionCountdownV91(isRun?"run":"walk",label);
-  if(workoutAbort) return;
+  const nextKind=isRun?"walk":"run";
 
   v93FlashCue(
     isRun?"RUN":"RECOVER",
@@ -1789,6 +1788,16 @@ runSegmentV91 = async function(label,seconds,remaining,total){
   );
 
   await cue(isRun?v91Pick("runStart"):v91Pick("walkStart"));
+  if(workoutAbort) return;
+
+  const leadIn=5;
+  if(seconds>leadIn){
+    await timer(seconds-leadIn,remaining,total);
+    if(workoutAbort) return;
+    await transitionCountdownV91(nextKind,nextKind==="run"?"Run":"Walk");
+    return;
+  }
+
   return timer(seconds,remaining,total);
 };
 
