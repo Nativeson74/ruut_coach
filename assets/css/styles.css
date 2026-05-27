@@ -1,0 +1,198 @@
+:root{
+  --bg:#050914;--panel:#101b2f;--panel2:#16243d;--glass:rgba(255,255,255,.075);
+  --text:#f7f9fd;--muted:#9aa8bd;--soft:#c8d3e2;--accent:#63e6be;--accent2:#7aa2ff;
+  --gold:#ffd166;--purple:#a78bfa;--danger:#ff6b6b;--line:rgba(255,255,255,.12);
+  --shadow:0 20px 50px rgba(0,0,0,.38);--radius:26px
+}
+*{box-sizing:border-box}
+body{
+  margin:0;min-height:100vh;color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif;
+  -webkit-font-smoothing:antialiased;padding:env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
+  background:
+    radial-gradient(circle at 12% -10%,rgba(99,230,190,.25),transparent 34%),
+    radial-gradient(circle at 100% 0%,rgba(122,162,255,.22),transparent 32%),
+    radial-gradient(circle at 50% 100%,rgba(167,139,250,.12),transparent 35%),
+    linear-gradient(160deg,#050914,#07101f 45%,#030611)
+}
+.app{max-width:560px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;gap:14px;padding:16px 0 22px}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.brand{display:flex;align-items:center;gap:12px}
+.logo{width:46px;height:46px;border-radius:18px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;color:#06101f;font-weight:950;box-shadow:var(--shadow)}
+h1,h2,h3,p{margin:0} h1{font-size:22px;letter-spacing:-.03em} h2{font-size:28px;letter-spacing:-.045em;line-height:1.02} h3{font-size:18px}
+.muted{color:var(--muted)} .soft{color:var(--soft)} .small{font-size:13px}.tiny{font-size:12px}
+.card{background:linear-gradient(180deg,rgba(255,255,255,.085),rgba(255,255,255,.035));border:1px solid var(--line);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);backdrop-filter:blur(16px)}
+.hero{display:grid;gap:16px}.grid{display:grid;gap:12px}.grid.two{grid-template-columns:1fr 1fr}.grid.three{grid-template-columns:repeat(3,1fr)}
+.pill-row{display:flex;flex-wrap:wrap;gap:8px}.pill{padding:7px 10px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid var(--line);color:var(--muted);font-size:13px}.pill.accent{color:#07101f;background:var(--accent);border-color:transparent;font-weight:850}.pill.run{color:#06101f;background:var(--accent);font-weight:850}.pill.bodyweight{color:#211700;background:var(--gold);font-weight:850}.pill.rest{color:#160e2f;background:var(--purple);font-weight:850}
+.stat{background:rgba(255,255,255,.055);border:1px solid var(--line);border-radius:20px;padding:14px}.stat strong{display:block;font-size:23px;letter-spacing:-.03em}
+button{border:0;border-radius:18px;padding:15px 16px;font-size:16px;font-weight:850;color:#07101f;background:var(--accent);cursor:pointer;width:100%;touch-action:manipulation}
+button.secondary{background:rgba(255,255,255,.08);color:var(--text);border:1px solid var(--line)}button.gold{background:var(--gold);color:#211700}button.danger{background:rgba(255,107,107,.14);color:#ffb3b3;border:1px solid rgba(255,107,107,.35)}button.smallbtn{width:auto;padding:10px 12px;font-size:13px}
+nav{position:sticky;bottom:12px;display:grid;grid-template-columns:repeat(6,1fr);gap:7px;background:rgba(8,15,30,.78);backdrop-filter:blur(20px);border:1px solid var(--line);border-radius:24px;padding:8px;margin-top:auto;z-index:10}
+nav button{background:transparent;color:var(--muted);border:0;padding:10px 3px;border-radius:16px;font-size:11px;font-weight:850}nav button.active{background:rgba(99,230,190,.18);color:var(--accent)}
+.screen{display:none;gap:14px}.screen.active{display:grid}
+.exercise{display:flex;justify-content:space-between;align-items:center;padding:13px 0;border-bottom:1px solid var(--line);gap:12px}.exercise:last-child{border-bottom:0}
+.detail{padding:13px;border-radius:18px;background:rgba(0,0,0,.16);border:1px solid var(--line);display:grid;gap:4px}
+.workout-mode{text-align:center;padding:24px 18px;display:grid;gap:20px}.timer{font-size:78px;line-height:.95;letter-spacing:-.085em;font-weight:950;font-variant-numeric:tabular-nums}.cue{font-size:40px;font-weight:950;letter-spacing:-.05em}
+.progress-bar{height:12px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden;border:1px solid var(--line)}.progress-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));width:0%;transition:width .4s ease}
+.list{display:grid;gap:8px}.row{display:flex;justify-content:space-between;align-items:center;padding:12px;background:rgba(255,255,255,.045);border:1px solid var(--line);border-radius:16px;gap:12px}.complete{color:var(--accent);font-weight:950}
+.ring{height:94px;width:94px;border-radius:999px;display:grid;place-items:center;background:conic-gradient(var(--accent) var(--pct),rgba(255,255,255,.1) 0);margin:auto}.ring span{height:72px;width:72px;border-radius:999px;background:#07101f;display:grid;place-items:center;font-weight:950}
+.badge{padding:12px;border-radius:18px;background:rgba(255,255,255,.055);border:1px solid var(--line)}.badge.locked{opacity:.45}.guide-card{padding:14px;border-radius:20px;background:rgba(255,255,255,.055);border:1px solid var(--line);display:grid;gap:8px}.guide-icon{font-size:28px}.guide-card ul{margin:4px 0 0 18px;padding:0;color:var(--muted)}.guide-card li{margin:4px 0}.guide-mini{display:flex;gap:8px;flex-wrap:wrap}.guide-mini span{font-size:12px;padding:5px 8px;border-radius:999px;background:rgba(255,255,255,.07);color:var(--soft)}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;place-items:center;padding:18px;z-index:100}.modal.active{display:grid}.modal .card{width:100%;max-width:480px;max-height:88vh;overflow:auto}
+select,textarea,input{width:100%;border-radius:14px;padding:12px;background:#07101f;color:white;border:1px solid var(--line);font-size:16px}textarea{height:180px}
+.dot{width:9px;height:9px;border-radius:999px;background:var(--danger);display:inline-block}.dot.on{background:var(--accent)}
+@media(max-width:390px){.timer{font-size:62px}.cue{font-size:32px}h2{font-size:24px}.grid.three{grid-template-columns:1fr}}
+
+.demo-gif{width:100%;min-height:150px;border-radius:18px;border:1px solid var(--line);background:radial-gradient(circle at 50% 35%,rgba(99,230,190,.18),transparent 34%),linear-gradient(135deg,rgba(255,255,255,.08),rgba(255,255,255,.025));display:grid;place-items:center;overflow:hidden;color:var(--muted);font-weight:850;text-align:center}
+.demo-gif img{width:100%;height:100%;object-fit:cover;display:block}
+.demo-gif .fallback{padding:24px}
+.demo-steps{margin:0;padding-left:20px;color:var(--soft);display:grid;gap:6px}
+.challenge-active{border-color:rgba(99,230,190,.55);background:rgba(99,230,190,.09)}
+.recovery-card{border-left:4px solid var(--accent)}
+.stretch-card{border-left:4px solid var(--purple)}
+.visual-glow{box-shadow:0 0 0 1px rgba(99,230,190,.12),0 24px 60px rgba(0,0,0,.42)}
+
+
+/* ---------- V6 PRODUCT VISUALS ---------- */
+.mode-banner{
+  position:relative;
+  overflow:hidden;
+  padding:20px;
+  border-radius:28px;
+  border:1px solid var(--line);
+  background:
+    radial-gradient(circle at 15% 0%,rgba(99,230,190,.24),transparent 34%),
+    radial-gradient(circle at 90% 20%,rgba(122,162,255,.18),transparent 30%),
+    rgba(255,255,255,.055);
+}
+.mode-banner:after{
+  content:"";
+  position:absolute;
+  inset:auto -40px -70px auto;
+  width:190px;
+  height:190px;
+  border-radius:999px;
+  background:rgba(255,255,255,.045);
+}
+.mode-run{box-shadow:0 0 0 1px rgba(99,230,190,.14),0 24px 80px rgba(99,230,190,.08)}
+.mode-bodyweight{box-shadow:0 0 0 1px rgba(255,209,102,.15),0 24px 80px rgba(255,209,102,.08)}
+.mode-rest{box-shadow:0 0 0 1px rgba(167,139,250,.15),0 24px 80px rgba(167,139,250,.08)}
+.big-action-row{display:grid;grid-template-columns:1.3fr .7fr;gap:10px}
+.metric-card{
+  background:linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.04));
+  border:1px solid var(--line);
+  border-radius:22px;
+  padding:16px;
+}
+.metric-card strong{font-size:28px;letter-spacing:-.05em;display:block}
+.metric-card span{color:var(--muted);font-size:12px}
+.challenge-bar{height:10px;background:rgba(255,255,255,.09);border-radius:999px;overflow:hidden;border:1px solid var(--line);margin-top:8px}
+.challenge-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.challenge-card{display:grid;gap:8px;padding:14px;border-radius:20px;background:rgba(255,255,255,.05);border:1px solid var(--line)}
+.challenge-card.active{border-color:rgba(99,230,190,.55);background:rgba(99,230,190,.09)}
+.challenge-card.complete{border-color:rgba(255,209,102,.55);background:rgba(255,209,102,.09)}
+.demo-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.demo-tile{padding:13px;border-radius:18px;border:1px solid var(--line);background:rgba(255,255,255,.05);display:grid;gap:8px}
+.asset-note{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--muted);background:rgba(0,0,0,.22);border:1px solid var(--line);border-radius:14px;padding:10px;overflow:auto}
+.timeline{display:grid;gap:8px}
+.timeline-item{display:flex;gap:10px;align-items:flex-start;padding:10px;border-radius:16px;background:rgba(255,255,255,.045);border:1px solid var(--line)}
+.timeline-dot{width:12px;height:12px;border-radius:999px;background:var(--accent);margin-top:4px;flex:0 0 12px}
+@media(max-width:390px){.demo-grid,.big-action-row{grid-template-columns:1fr}}
+
+
+/* ---------- V7 STRETCH SYSTEM ---------- */
+.stretch-panel{
+  border-radius:22px;
+  padding:14px;
+  background:rgba(255,255,255,.055);
+  border:1px solid var(--line);
+  display:grid;
+  gap:8px;
+}
+.stretch-panel.dynamic{border-left:4px solid var(--accent)}
+.stretch-panel.static{border-left:4px solid var(--purple)}
+.stretch-panel.flexibility{border-left:4px solid var(--gold)}
+.stretch-meta{display:flex;gap:8px;flex-wrap:wrap}
+.stretch-chip{font-size:12px;color:var(--muted);border:1px solid var(--line);background:rgba(0,0,0,.16);border-radius:999px;padding:5px 8px}
+.instruction-list{margin:0;padding-left:20px;display:grid;gap:6px;color:var(--soft)}
+.no-gif-note{padding:12px;border:1px solid var(--line);background:rgba(0,0,0,.18);border-radius:16px;color:var(--muted);font-size:13px}
+
+
+/* ---------- V8 RUN INTELLIGENCE + COCKPIT + PREMIUM UI ---------- */
+body{
+  background:
+    radial-gradient(circle at 12% -8%,rgba(99,230,190,.28),transparent 34%),
+    radial-gradient(circle at 90% 3%,rgba(122,162,255,.22),transparent 30%),
+    radial-gradient(circle at 50% 105%,rgba(255,209,102,.10),transparent 34%),
+    linear-gradient(160deg,#030611,#07101f 44%,#02030a)!important;
+}
+.card,.mode-banner{
+  box-shadow:0 28px 80px rgba(0,0,0,.46), inset 0 1px 0 rgba(255,255,255,.05);
+}
+.cockpit{
+  min-height:calc(100vh - 150px);
+  display:grid;
+  align-content:center;
+  gap:18px;
+  text-align:center;
+  padding:22px 18px;
+}
+.cockpit-top{
+  display:flex;
+  justify-content:center;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.cockpit .cue{
+  font-size:48px;
+  line-height:.94;
+}
+.cockpit .timer{
+  font-size:92px;
+  text-shadow:0 14px 45px rgba(0,0,0,.38);
+}
+.cockpit-message{
+  font-size:17px;
+  line-height:1.35;
+  color:var(--soft);
+  min-height:46px;
+}
+.cockpit-controls{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+}
+.cockpit-start{
+  grid-column:1/-1;
+}
+.phase-card{
+  border:1px solid var(--line);
+  border-radius:22px;
+  padding:14px;
+  background:rgba(255,255,255,.052);
+  text-align:left;
+}
+.phase-card strong{display:block;margin-bottom:4px}
+.reflection-grid{display:grid;gap:10px}
+.choice-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.choice-btn{background:rgba(255,255,255,.08);color:var(--text);border:1px solid var(--line);font-size:14px;padding:12px}
+.choice-btn.selected{background:var(--accent);color:#07101f}
+.run-mode-card{
+  border-radius:22px;
+  padding:14px;
+  border:1px solid var(--line);
+  background:rgba(255,255,255,.05);
+  display:grid;
+  gap:6px;
+}
+.route-tip{
+  padding:12px;
+  border-radius:18px;
+  background:rgba(99,230,190,.08);
+  border:1px solid rgba(99,230,190,.20);
+  color:var(--soft);
+}
+@media(max-width:390px){
+  .cockpit .cue{font-size:38px}
+  .cockpit .timer{font-size:72px}
+  .cockpit-controls{grid-template-columns:1fr}
+}
