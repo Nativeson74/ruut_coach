@@ -1368,4 +1368,183 @@ function saveReflectionV9(){
 // Route older reflection buttons to the new reflection system.
 openReflectionV8 = openReflectionV9;
 
+
+
+// ---------- V9.1: HUMAN COACHING + TRANSITION COUNTDOWNS ----------
+const V91_COACH = {
+  trail: {
+    runStart:["Ease into the run. Light feet. Find the rhythm.","Start running. Smooth stride, quiet shoulders.","Run now. Let the pace come to you."],
+    walkStart:["Walk now. Let the breathing settle.","Recovery walk. Stay tall and keep moving.","Walk it out. Deep breath, loose hands."],
+    transitionRun:["Run starts in five. Get ready to move.","Five seconds to run. Set your posture.","Run coming up. Tall chest, easy feet."],
+    transitionWalk:["Walk break in five. Finish this piece clean.","Five seconds to walk. Stay smooth to the line.","Walk coming up. Control the change."],
+    strengthNext:["Next movement: {name}. Set your position.","Coming up: {name}. Clean reps only.","Next: {name}. Move with control."],
+    longFirst:["First third. Keep it easy. You are buying the finish right now."],
+    longMiddle:["Middle third. Settle in. Smooth, patient, steady."],
+    longFinal:["Final third. Stay calm. Bring it home with discipline."],
+    routeTrail:["Trail reminder. Hike steep climbs. Run the smooth ground."],
+    routeTreadmill:["Treadmill check. Tall posture. Loose shoulders. Quiet breathing."],
+    finish:["Good work. That was an honest effort.","Finished. Log it and carry the win forward."]
+  },
+  tough: {
+    runStart:["Run now. No drifting. Do the work.","Move. Strong, controlled, disciplined.","Run. Keep your form. Keep your promise."],
+    walkStart:["Walk. Recover, don't quit.","Walk now. Breathe and get ready for the next rep.","Recovery. Use it. You're not done."],
+    transitionRun:["Five seconds. Get ready to work.","Run starts in five. Lock in.","Five seconds to run. No excuses."],
+    transitionWalk:["Walk break in five. Finish strong.","Five seconds. Hold the line.","Walk coming. Earn it to the bell."],
+    strengthNext:["Next: {name}. No sloppy reps.","{name} next. Make them count.","Set up for {name}. Discipline over speed."],
+    longFirst:["First third. Stay controlled. Don't burn matches."],
+    longMiddle:["Middle third. This is where discipline matters."],
+    longFinal:["Final third. Finish the job."],
+    routeTrail:["Trail rule. Hike the steep stuff. Attack the runnable ground."],
+    routeTreadmill:["Treadmill check. Stand tall. Don't get lazy."],
+    finish:["Done. That's discipline.","Workout complete. You did the work."]
+  },
+  calm: {
+    runStart:["Begin running. Smooth breathing, relaxed shoulders.","Start running. Keep the effort calm and controlled.","Run now. Easy rhythm."],
+    walkStart:["Walk now. Let your breath come back.","Recover here. Calm and steady.","Walk and reset."],
+    transitionRun:["Run begins in five. Prepare gently.","Five seconds to run. Stay relaxed.","Running soon. Smooth and easy."],
+    transitionWalk:["Walk begins in five. Ease into recovery.","Five seconds to walk. Stay controlled.","Recovery is coming. Finish calmly."],
+    strengthNext:["Next movement: {name}. Take your time.","Prepare for {name}. Good form first.","{name} next. Smooth and steady."],
+    longFirst:["First third. Keep the effort very easy."],
+    longMiddle:["Middle third. Settle into your rhythm."],
+    longFinal:["Final third. Stay composed and finish well."],
+    routeTrail:["Trail reminder. Move with the terrain, not against it."],
+    routeTreadmill:["Treadmill check. Gentle posture, steady breath."],
+    finish:["Workout complete. Well done.","Finished. Good steady work today."]
+  }
+};
+
+function v91Pack(){ return V91_COACH[settings.coachStyle] || V91_COACH.trail; }
+function v91Pick(key){ const a=v91Pack()[key] || V91_COACH.trail[key] || [""]; return a[Math.floor(Math.random()*a.length)]; }
+function v91Template(s,o){ return String(s).replace(/\{(\w+)\}/g,(_,k)=>o[k]??""); }
+
+async function transitionCountdownV91(kind,label){
+  if(settings.transitionCountdown===false) return;
+  const isRun=kind==="run";
+  const isWalk=kind==="walk";
+  const phraseKey=isRun?"transitionRun":isWalk?"transitionWalk":"strengthNext";
+  const phraseText=v91Template(v91Pick(phraseKey),{name:label||"next"});
+  setCue(isRun?"Run Next":isWalk?"Walk Next":"Next");
+  setWorkoutMessage(phraseText);
+  await cue(phraseText);
+  for(let n=5;n>=1;n--){
+    if(workoutAbort || skipCurrentTimer) return;
+    setTimer("0:0"+n);
+    if(n<=3) await cue(String(n));
+    await timer(1, n, 5);
+  }
+}
+
+async function runSegmentV91(label,seconds,remaining,total){
+  const isRun=label==="Run";
+  await transitionCountdownV91(isRun?"run":"walk",label);
+  if(workoutAbort) return;
+  setCue(label.toUpperCase());
+  const msg=isRun?"Run segment active. Smooth is fast. Stay controlled.":"Walk segment active. Recover, breathe, keep moving.";
+  setWorkoutMessage(msg);
+  await cue(isRun?v91Pick("runStart"):v91Pick("walkStart"));
+  await timer(seconds,remaining,total);
+}
+
+startRun = async function(x,readiness){
+  let total=x.total*60;
+  if(readiness==="tired") total=Math.round(total*.8);
+  let remaining=total, half=Math.floor(total/2), halfSpoken=false;
+  let quarterSpoken=false, fifteenSpoken=false, fiveSpoken=false;
+  let phaseName="";
+
+  currentWorkoutSession={active:true,type:"run",startedAt:new Date().toISOString(),routeMode:settings.routeMode,readiness,longRun:isSaturdayLongRun(x),skipped:false};
+  setCue("Warmup");
+  setWorkoutMessage("Warm up first. This keeps you moving longer.");
+  if(settings.warmup) await warmup();
+  if(workoutAbort) return;
+
+  const route=routeModeDescription(settings.routeMode);
+  await cue(`${route.title} mode. ${route.tip}`);
+  if(isSaturdayLongRun(x)) await cue("Long run day. First third easy. Middle third steady. Final third proud.");
+
+  await cue(v91Pick("runStart"));
+  await countdown();
+
+  while(remaining>0 && !workoutAbort){
+    if(isSaturdayLongRun(x)){
+      const phase=longRunPhase(total,remaining);
+      if(phase.name!==phaseName){
+        phaseName=phase.name;
+        const pmsg=phase.name==="First Third"?v91Pick("longFirst"):phase.name==="Middle Third"?v91Pick("longMiddle"):v91Pick("longFinal");
+        setWorkoutMessage(pmsg);
+        await cue(pmsg);
+      }
+    }
+
+    await runSegmentV91("Run",x.runSeconds,remaining,total);
+    if(workoutAbort) return;
+    remaining-=x.runSeconds;
+    const elapsed=total-remaining;
+
+    if(settings.routeMode==="outback" && !halfSpoken && remaining<=half){ halfSpoken=true; showHalfway(); }
+    if(settings.routeMode==="loop"){
+      if(!quarterSpoken && elapsed>=total*.25){quarterSpoken=true;await cue("One quarter complete. Stay smooth.");}
+      if(!halfSpoken && elapsed>=total*.50){halfSpoken=true;await cue("Halfway through the workout.");}
+      if(!fifteenSpoken && remaining<=900 && total>1200){fifteenSpoken=true;await cue("Fifteen minutes left.");}
+      if(!fiveSpoken && remaining<=300){fiveSpoken=true;await cue("Five minutes left. Finish clean.");}
+    }
+    if(settings.routeMode==="trail" && Math.random()<0.22) await cue(v91Pick("routeTrail"));
+    if(settings.routeMode==="treadmill" && Math.random()<0.22) await cue(v91Pick("routeTreadmill"));
+    if(remaining<=0) break;
+
+    await runSegmentV91("Walk",x.walkSeconds,remaining,total);
+    if(workoutAbort) return;
+    remaining-=x.walkSeconds;
+    if(settings.routeMode==="outback" && !halfSpoken && remaining<=half){ halfSpoken=true; showHalfway(); }
+  }
+  if(settings.cooldown) await cooldown();
+  if(workoutAbort) return;
+  finishWorkout();
+};
+
+startStrength = async function(x,readiness){
+  setCue("Warmup");
+  if(settings.warmup) await warmup();
+  if(workoutAbort) return;
+  let rounds=x.rounds;
+  if(readiness==="tired") rounds=Math.max(1,rounds-1);
+  await cue(`Starting bodyweight workout. ${rounds} rounds. Clean reps over speed.`);
+  await sleep(500);
+  for(let r=1;r<=rounds && !workoutAbort;r++){
+    setCue(`Round ${r}`);
+    await cue(template(phrase("round"),{n:r,t:rounds}));
+    for(const e of x.exercises){
+      if(workoutAbort) return;
+      await transitionCountdownV91("strength",e.name);
+      if(workoutAbort) return;
+      setCue(e.name);
+      if(e.mode==="timed"){
+        setWorkoutMessage(`${e.name}. ${e.seconds} seconds. Brace and breathe.`);
+        await cue(v91Template(v91Pick("strengthNext"),{name:e.name}));
+        await cue(template(phrase("timed"),{name:e.name,seconds:e.seconds}));
+        await timer(e.seconds,e.seconds,e.seconds);
+        if(workoutAbort) return;
+        await cue(`${e.name} complete.`);
+      }else{
+        setTimer("DONE?");
+        setWorkoutMessage(`${e.name}. ${e.reps}. Tap Done when finished.`);
+        await cue(v91Template(v91Pick("strengthNext"),{name:e.name}));
+        await cue(template(phrase("rep"),{name:e.name,reps:e.reps}));
+        await waitForDone(e.name,e.reps);
+        if(workoutAbort) return;
+      }
+    }
+  }
+  if(settings.cooldown) await cooldown();
+  if(workoutAbort) return;
+  finishWorkout();
+};
+
+// Make finish sound a little more human while keeping v9 auto-advance/reflection behavior.
+const finishWorkoutV9Base = finishWorkout;
+finishWorkout = async function(){
+  await cue(v91Pick("finish"));
+  return finishWorkoutV9Base();
+};
+
 renderAll();
