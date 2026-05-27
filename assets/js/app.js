@@ -1759,7 +1759,7 @@ transitionCountdownV91 = async function(kind,label){
       }catch(e){}
       await cue(String(n));
     }
-    await sleep(1000);
+    await new Promise(r=>setTimeout(r,1000));
   }
 
   const td=document.getElementById("timerDisplay");
@@ -1781,7 +1781,15 @@ runSegmentV91 = async function(label,seconds,remaining,total){
       :"Control your breathing and stay moving."
   );
 
-  return runSegmentV93Base(label,seconds,remaining,total);
+  setCue(label.toUpperCase());
+  setWorkoutMessage(
+    isRun
+      ?"Smooth stride. Relax the jaw and shoulders."
+      :"Control your breathing and stay moving."
+  );
+
+  await cue(isRun?v91Pick("runStart"):v91Pick("walkStart"));
+  return timer(seconds,remaining,total);
 };
 
 const waitForDoneV93Base = waitForDone;
