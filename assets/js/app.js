@@ -166,7 +166,7 @@ function startRest(x){setWorkoutMessage("Rest day. Light walking only.");setCue(
 async function startRun(x,readiness){
  let total=x.total*60;if(readiness==="tired")total=Math.round(total*.8);
  let remaining=total,half=Math.floor(total/2),halfSpoken=false;setCue("Warmup");setWorkoutMessage("Warm up first. This keeps you moving longer.");if(settings.warmup)await warmup();
- await cue(phrase("start"));await countdown();
+ await cue(phrase("start"));
  while(remaining>0 && !workoutAbort){await runSegment("Run",x.runSeconds,remaining,total); if(workoutAbort) return;remaining-=x.runSeconds;if(!halfSpoken&&settings.routeMode==="outback"&&remaining<=half){halfSpoken=true;showHalfway()}if(remaining<=0)break;await runSegment("Walk",x.walkSeconds,remaining,total); if(workoutAbort) return; remaining-=x.walkSeconds;if(!halfSpoken&&settings.routeMode==="outback"&&remaining<=half){halfSpoken=true;showHalfway()}}
  if(settings.cooldown)await cooldown(); if(workoutAbort) return; finishWorkout()
 }
@@ -178,11 +178,18 @@ async function startStrength(x,readiness){
  for(let r=1;r<=rounds && !workoutAbort;r++){setCue(`Round ${r}`);speak(template(phrase("round"),{n:r,t:rounds}));for(const e of x.exercises){if(workoutAbort) return; setCue(e.name);if(e.mode==="timed"){setWorkoutMessage(`${e.name}. ${e.seconds} seconds.`);await cue(template(phrase("timed"),{name:e.name,seconds:e.seconds}));await timer(e.seconds,e.seconds,e.seconds); if(workoutAbort) return; await cue(`${e.name} complete.`)}else{setTimer("DONE?");setWorkoutMessage(`${e.name}. ${e.reps}. Tap Done when finished.`);await cue(template(phrase("rep"),{name:e.name,reps:e.reps}));await waitForDone(e.name,e.reps); if(workoutAbort) return;}}}
  if(settings.cooldown) await cooldown(); if(workoutAbort) return; finishWorkout()
 }
-async function warmup(){await cue("Warmup. March in place. Then loosen the hips and ankles. Tap skip current step if you want to move ahead.");setTimer("2:00");setWorkoutMessage("Warmup: march, leg swings, calf raises, easy movement. Tap Skip Current Step to move ahead.");await timer(120,120,120)}
+async function warmup(){
+  if(!settings.warmup) return;
+await cue("Warmup. March in place. Then loosen the hips and ankles. Tap skip current step if you want to move ahead.");setTimer("2:00");setWorkoutMessage("Warmup: march, leg swings, calf raises, easy movement. Tap Skip Current Step to move ahead.");await timer(120,120,120)}
 async function cooldown(){await cue("Cooldown. Walk easy and bring your breathing down. Tap skip current step if you are done.");setCue("Cooldown");setWorkoutMessage("Cooldown: easy walk, calves, hips, hamstrings. Tap Skip Current Step to finish.");await timer(180,180,180)}
 async function finishWorkout(){setCue("Complete");setTimer("DONE");setWorkoutMessage("Workout complete. Good work.");await cue(phrase("finish"));markComplete(false);releaseWakeLock();showModal(`<h2>Workout Complete</h2><p class="muted" style="margin:10px 0 18px">${currentWorkout().day} — ${currentWorkout().title}</p><button onclick="hideModal();openJournalEntry()">Reflect</button><div style="height:8px"></div><button onclick="hideModal();nextDay()">Move to Next Day</button><div style="height:8px"></div><button class="secondary" onclick="hideModal()">Stay Here</button>`)}
 function waitForDone(name,reps){return new Promise(resolve=>{showModal(`<h2>${name}</h2><p class="muted" style="margin:10px 0 18px">${reps}</p><button onclick="resolveDone()">Done</button>`);window.resolveDone=()=>{hideModal();resolve()}})}
-async function countdown(){setTimer("3");setWorkoutMessage("Starting soon.");await sleep(700);setTimer("2");await sleep(700);setTimer("1");await sleep(700);setTimer("GO");await cue("Go.");await sleep(250)}
+async function countdown(){
+  setTimer("GO");
+  setWorkoutMessage("Starting workout.");
+  await cue("Go.");
+  await sleep(250);
+}
 function timer(seconds,remainingBefore,total){
   return new Promise(resolve=>{
     let left=Math.max(0,seconds);
@@ -1421,16 +1428,12 @@ async function transitionCountdownV91(kind,label){
   if(settings.transitionCountdown===false) return;
   const isRun=kind==="run";
   const isWalk=kind==="walk";
-  const phraseKey=isRun?"transitionRun":isWalk?"transitionWalk":"strengthNext";
-  const phraseText=v91Template(v91Pick(phraseKey),{name:label||"next"});
   setCue(isRun?"Run Next":isWalk?"Walk Next":"Next");
-  setWorkoutMessage(phraseText);
-  await cue(phraseText);
+  setWorkoutMessage(isRun?"Get ready to run.":isWalk?"Get ready to walk.":`Next movement: ${label||"next"}`);
   for(let n=5;n>=1;n--){
     if(workoutAbort || skipCurrentTimer) return;
-    setTimer("0:0"+n);
-    if(n<=3) await cue(String(n));
-    await timer(1, n, 5);
+    setTimer(String(n));
+    await new Promise(r=>setTimeout(r,1000));
   }
 }
 
@@ -1457,13 +1460,13 @@ startRun = async function(x,readiness){
   setWorkoutMessage("Warm up first. This keeps you moving longer.");
   if(settings.warmup) await warmup();
   if(workoutAbort) return;
+  if(!settings.warmup){ setCue("Ready"); setWorkoutMessage("Starting workout now."); }
 
   const route=routeModeDescription(settings.routeMode);
   await cue(`${route.title} mode. ${route.tip}`);
   if(isSaturdayLongRun(x)) await cue("Long run day. First third easy. Middle third steady. Final third proud.");
 
   await cue(v91Pick("runStart"));
-  await countdown();
 
   while(remaining>0 && !workoutAbort){
     if(isSaturdayLongRun(x)){
@@ -1614,6 +1617,7 @@ function v91Template(s,o){ return v92Template(s,o); }
 // Make startup and warmup noticeably more conversational.
 const warmupBaseV92 = warmup;
 warmup = async function(){
+  if(!settings.warmup) return;
   const style = (V92_COACH[settings.coachStyle] || V92_COACH.trail).identity;
   await cue(`${style} loaded. Warmup starts now. March easy, loosen the hips, and wake up the ankles. Tap skip current step if you want to move ahead.`);
   setTimer("2:00");
@@ -1740,32 +1744,34 @@ timer = async function(seconds,remaining,total){
 const transitionCountdownV93Base = transitionCountdownV91;
 transitionCountdownV91 = async function(kind,label){
   if(settings.transitionCountdown===false) return;
+
   const isRun=kind==="run";
   const isWalk=kind==="walk";
   const title=isRun?"RUN":isWalk?"WALK":"NEXT";
-  const detail=isRun?"Final five seconds before the run.":isWalk?"Final five seconds before the walk.":`Next movement: ${label}`;
+  const detail=isRun
+    ?"Get ready to run."
+    :isWalk
+      ?"Get ready to walk."
+      :`Next movement: ${label}`;
+
   v93FlashCue(title,detail);
 
   for(let n=5;n>=1;n--){
     if(workoutAbort || skipCurrentTimer) return;
     setTimer(String(n));
     const td=document.getElementById("timerDisplay");
-    if(td){
-      td.classList.add("v93-countdown");
-    }
-    if(n<=3){
-      try{
-        if(navigator.vibrate) navigator.vibrate(80);
-      }catch(e){}
-      // Visual countdown only. No spoken countdown numbers.
-    }
+    if(td) td.classList.add("v93-countdown");
+
+    try{
+      if(navigator.vibrate && n<=3) navigator.vibrate(80);
+    }catch(e){}
+
+    // Visual countdown only. No spoken countdown numbers.
     await new Promise(r=>setTimeout(r,1000));
   }
 
   const td=document.getElementById("timerDisplay");
-  if(td){
-    td.classList.remove("v93-countdown");
-  }
+  if(td) td.classList.remove("v93-countdown");
 };
 
 const runSegmentV93Base = runSegmentV91;
