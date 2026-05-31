@@ -1845,4 +1845,354 @@ countdown = async function(){
   await sleep(250);
 };
 
+
+// ---------- V9.4 RECOVERY INTELLIGENCE ----------
+function recentJournalEntries(limit=6){
+  return (state.journal||[]).slice(-limit);
+}
+
+function fatigueTrend(){
+  const recent = recentJournalEntries();
+  let hard=0, brutal=0, pain=0, skipped=0;
+
+  for(const j of recent){
+    const feel=(j.feel||"").toLowerCase();
+    const p=(j.pain||"").toLowerCase();
+
+    if(feel.includes("hard")) hard++;
+    if(feel.includes("brutal")) brutal++;
+    if(p && p!=="none" && p!=="not recorded") pain++;
+    if((j.note||"").toLowerCase().includes("skip")) skipped++;
+  }
+
+  return {
+    hard,
+    brutal,
+    pain,
+    skipped,
+    score:(hard*1)+(brutal*2)+(pain*2)+(skipped*1)
+  };
+}
+
+function recoveryRecommendation(){
+  const f=fatigueTrend();
+
+  if(f.score>=7){
+    return {
+      level:"high",
+      title:"Recovery Recommended",
+      message:"Recent fatigue or pain trend detected. Consider Recovery Mode or Flexibility instead of pushing intensity today."
+    };
+  }
+
+  if(f.score>=4){
+    return {
+      level:"moderate",
+      title:"Ease Back Slightly",
+      message:"Recent fatigue trend detected. Reduce intensity slightly and focus on smooth movement."
+    };
+  }
+
+  return {
+    level:"good",
+    title:"Recovered",
+    message:"Recovery trend looks good. Continue training normally."
+  };
+}
+
+function applyAdaptiveReduction(workout){
+  const rec=recoveryRecommendation();
+
+  if(rec.level==="high"){
+    if(workout.type==="strength"){
+      workout.rounds=Math.max(1,(workout.rounds||2)-1);
+    }
+
+    if(workout.type==="run"){
+      workout.total=Math.max(10,Math.round(workout.total*0.8));
+    }
+  }
+
+  if(rec.level==="moderate"){
+    if(workout.type==="strength"){
+      workout.rounds=Math.max(1,(workout.rounds||2)-0);
+    }
+
+    if(workout.type==="run"){
+      workout.total=Math.max(10,Math.round(workout.total*0.9));
+    }
+  }
+
+  return workout;
+}
+
+const currentWorkoutV94Base=currentWorkout;
+currentWorkout=function(){
+  const w=structuredClone(currentWorkoutV94Base());
+  return applyAdaptiveReduction(w);
+};
+
+const renderTodayV94Base=renderToday;
+renderToday=function(){
+  renderTodayV94Base();
+
+  const rec=recoveryRecommendation();
+  const today=document.getElementById("today");
+
+  if(today){
+    const color=
+      rec.level==="high"
+        ?"var(--danger)"
+        :rec.level==="moderate"
+          ?"orange"
+          :"var(--success)";
+
+    const html=`
+      <div class="card" style="border-left:4px solid ${color};margin-bottom:14px">
+        <div class="small" style="opacity:.7;letter-spacing:1px;text-transform:uppercase">
+          Recovery Intelligence
+        </div>
+        <h3 style="margin:6px 0">${rec.title}</h3>
+        <p class="muted">${rec.message}</p>
+      </div>
+    `;
+
+    today.insertAdjacentHTML("afterbegin",html);
+  }
+};
+
+const openReflectionV94Base=openReflectionV9;
+openReflectionV9=function(){
+  openReflectionV94Base();
+
+  setTimeout(()=>{
+    const modal=document.querySelector(".modal-content");
+    if(modal){
+      modal.insertAdjacentHTML("beforeend",`
+        <div class="card" style="margin-top:16px">
+          <strong>Recovery Note</strong>
+          <p class="muted small">
+            RUUT now tracks fatigue trends and may automatically reduce workload or recommend recovery days if pain/fatigue patterns increase.
+          </p>
+        </div>
+      `);
+    }
+  },50);
+};
+
+
+// ---------- V9.5 READINESS IMPORT ----------
+function parseReadinessReport(raw){
+  const text = String(raw || "");
+  const findNumber = (patterns) => {
+    for(const p of patterns){
+      const m = text.match(p);
+      if(m && m[1] !== undefined){
+        const n = parseFloat(String(m[1]).replace(/[^\d.-]/g,""));
+        if(!Number.isNaN(n)) return n;
+      }
+    }
+    return null;
+  };
+
+  const hrv = findNumber([/HRV:\s*([\d.]+)/i]);
+  const restingHR = findNumber([/Resting\s*HR:\s*([\d.]+)/i, /RestingHR:\s*([\d.]+)/i]);
+  const distance = findNumber([/Distance:\s*([\d.]+)/i]);
+  const vo2 = findNumber([/VO2\s*Max:\s*([\d.]+)/i, /VO₂\s*Max:\s*([\d.]+)/i, /Cardio\s*Fitness:\s*([\d.]+)/i]);
+
+  const sleepMatch = text.match(/SleepHours:\s*([^\n]+)/i);
+  const exerciseMatch = text.match(/ExerciseMinutes:\s*([^\n]+)/i);
+
+  const sleepRaw = sleepMatch ? sleepMatch[1].trim() : "";
+  const exerciseRaw = exerciseMatch ? exerciseMatch[1].trim() : "";
+
+  const sleepHours = sleepRaw && !/unavailable|none|n\/a/i.test(sleepRaw) ? parseFloat(sleepRaw) : null;
+  const exerciseMinutes = exerciseRaw && !/unavailable|none|n\/a/i.test(exerciseRaw) ? parseFloat(exerciseRaw) : null;
+
+  return {hrv, restingHR, distance, vo2, sleepHours, exerciseMinutes, importedAt:new Date().toISOString(), raw:text};
+}
+
+function downgradeReadiness(status){
+  if(String(status).includes("Green")) return "Yellow 🟡";
+  if(String(status).includes("Yellow")) return "Red 🔴";
+  return "Red 🔴";
+}
+
+function calculateReadinessFromImport(data){
+  let status = "Yellow 🟡";
+  const flags = [];
+  const notes = [];
+
+  if(data.hrv !== null){
+    if(data.hrv >= 45) status = "Green 🟢";
+    else if(data.hrv >= 38) status = "Yellow 🟡";
+    else status = "Red 🔴";
+
+    if(data.hrv >= 45) notes.push("HRV is above baseline.");
+    if(data.hrv < 38) flags.push("Low HRV.");
+  }else{
+    flags.push("Missing HRV.");
+  }
+
+  if(data.restingHR !== null){
+    if(data.restingHR >= 64){
+      flags.push("Elevated resting heart rate.");
+      status = downgradeReadiness(status);
+    }else{
+      notes.push("Resting HR is normal.");
+    }
+  }
+
+  if(data.distance !== null){
+    if(data.distance >= 10){
+      flags.push("High distance yesterday.");
+      status = downgradeReadiness(status);
+    }else if(data.distance >= 6){
+      flags.push("Moderate distance yesterday.");
+    }
+  }
+
+  if(data.sleepHours !== null && !Number.isNaN(data.sleepHours)){
+    if(data.sleepHours < 6){
+      flags.push("Low sleep.");
+      status = downgradeReadiness(status);
+    }else if(data.sleepHours >= 7){
+      notes.push("Sleep looks solid.");
+    }
+  }
+
+  if(data.exerciseMinutes !== null && !Number.isNaN(data.exerciseMinutes)){
+    if(data.exerciseMinutes >= 90){
+      flags.push("High exercise load yesterday.");
+      status = downgradeReadiness(status);
+    }
+  }
+
+  let recommendation = "Proceed with scheduled workout.";
+  if(status.includes("Yellow")){
+    recommendation = "Proceed, but reduce volume or intensity if legs feel heavy.";
+  }
+  if(status.includes("Red")){
+    recommendation = "Recovery Mode recommended. Choose mobility, walking, or flexibility.";
+  }
+
+  return {status, flags, notes, recommendation};
+}
+
+function escapeHTML(str){
+  return String(str || "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[c]));
+}
+
+function openReadinessImport(){
+  const current = state.readinessImport?.raw || "";
+  showModal(`<h2>Readiness Import</h2>
+    <p class="muted" style="margin:8px 0 12px">Paste the report from your RUUT Readiness Shortcut.</p>
+    <textarea id="readinessImportText" placeholder="Paste readiness report here...">${escapeHTML(current)}</textarea>
+    <div style="height:10px"></div>
+    <button onclick="saveReadinessImport()">Analyze Readiness</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="clearReadinessImport()">Clear Readiness</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="hideModal()">Cancel</button>`);
+}
+
+function saveReadinessImport(){
+  const raw = document.getElementById("readinessImportText").value || "";
+  const parsed = parseReadinessReport(raw);
+  const result = calculateReadinessFromImport(parsed);
+
+  state.readinessImport = {...parsed, ...result};
+  saveState();
+  hideModal();
+  showReadinessResult();
+}
+
+function clearReadinessImport(){
+  delete state.readinessImport;
+  saveState();
+  hideModal();
+}
+
+function readinessColor(status){
+  if(String(status).includes("Green")) return "var(--accent)";
+  if(String(status).includes("Yellow")) return "var(--gold)";
+  return "var(--danger)";
+}
+
+function showReadinessResult(){
+  const r = state.readinessImport;
+  if(!r){
+    openReadinessImport();
+    return;
+  }
+
+  showModal(`<h2>RUUT Readiness</h2>
+    <div class="grid two" style="margin:12px 0">
+      <div class="stat"><span class="muted small">Status</span><strong>${r.status}</strong></div>
+      <div class="stat"><span class="muted small">HRV</span><strong>${r.hrv ?? "—"}</strong></div>
+      <div class="stat"><span class="muted small">Resting HR</span><strong>${r.restingHR ?? "—"}</strong></div>
+      <div class="stat"><span class="muted small">Distance</span><strong>${r.distance ?? "—"}</strong></div>
+    </div>
+    <div class="detail"><strong>Recommendation</strong><p class="muted">${r.recommendation}</p></div>
+    <div style="height:10px"></div>
+    <div class="detail"><strong>Flags</strong><p class="muted">${(r.flags&&r.flags.length)?r.flags.map(f=>"• "+f).join("<br>"):"None"}</p></div>
+    <div style="height:10px"></div>
+    <div class="detail"><strong>Notes</strong><p class="muted">${(r.notes&&r.notes.length)?r.notes.join(" "):"No extra notes."}</p></div>
+    <div style="height:12px"></div>
+    <button onclick="hideModal();openReadinessImport()">Update Import</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="hideModal()">Done</button>`);
+}
+
+const renderTodayV95Base = renderToday;
+renderToday = function(){
+  renderTodayV95Base();
+
+  const today = document.getElementById("today");
+  if(!today) return;
+
+  const r = state.readinessImport;
+  const card = r
+    ? `<section class="card hero" style="border-left:4px solid ${readinessColor(r.status)}">
+        <div class="pill-row"><span class="pill accent">Readiness</span><span class="pill">${new Date(r.importedAt).toLocaleDateString()}</span></div>
+        <h3>${r.status}</h3>
+        <p class="muted">${r.recommendation}</p>
+        <div class="grid two">
+          <div class="stat"><span class="muted small">HRV</span><strong>${r.hrv ?? "—"}</strong></div>
+          <div class="stat"><span class="muted small">Resting HR</span><strong>${r.restingHR ?? "—"}</strong></div>
+        </div>
+        <button class="secondary" onclick="showReadinessResult()">View Readiness</button>
+      </section>`
+    : `<section class="card hero" style="border-left:4px solid var(--line)">
+        <div class="pill-row"><span class="pill">Readiness</span></div>
+        <h3>No Readiness Imported</h3>
+        <p class="muted">Run your RUUT Readiness Shortcut, then paste the report here.</p>
+        <button class="secondary" onclick="openReadinessImport()">Paste Readiness Report</button>
+      </section>`;
+
+  today.insertAdjacentHTML("afterbegin", card);
+};
+
+const beginWorkoutV95Base = beginWorkout;
+beginWorkout = async function(readiness){
+  const r = state.readinessImport;
+
+  if(r && r.status){
+    if(r.status.includes("Red")){
+      const choice = confirm("Readiness is Red. Recovery Mode is recommended. Press OK for recovery, or Cancel to continue scheduled workout.");
+      if(choice){
+        const recoverButton = document.querySelector("nav button:nth-child(6)") || document.querySelector("nav button");
+        showScreen("recover", recoverButton);
+        return;
+      }
+    }
+
+    if(r.status.includes("Yellow")){
+      await cue("Readiness is yellow today. Keep the workout controlled and reduce intensity if needed.");
+    }
+  }
+
+  return beginWorkoutV95Base(readiness);
+};
+
 renderAll();
