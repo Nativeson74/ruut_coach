@@ -2195,4 +2195,59 @@ beginWorkout = async function(readiness){
   return beginWorkoutV95Base(readiness);
 };
 
+
+// ---------- V9.5.1 READINESS CARD VISIBILITY FIX ----------
+function renderReadinessCardV951(){
+  const today = document.getElementById("today");
+  if(!today) return;
+
+  const existing = document.getElementById("readinessCardV951");
+  if(existing) existing.remove();
+
+  const r = state.readinessImport;
+  const card = document.createElement("section");
+  card.id = "readinessCardV951";
+  card.className = "card hero";
+  card.style.borderLeft = `4px solid ${r ? readinessColor(r.status) : "var(--line)"}`;
+
+  if(r){
+    card.innerHTML = `
+      <div class="pill-row">
+        <span class="pill accent">Readiness</span>
+        <span class="pill">${new Date(r.importedAt).toLocaleDateString()}</span>
+      </div>
+      <h3>${r.status}</h3>
+      <p class="muted">${r.recommendation}</p>
+      <div class="grid two">
+        <div class="stat"><span class="muted small">HRV</span><strong>${r.hrv ?? "—"}</strong></div>
+        <div class="stat"><span class="muted small">Resting HR</span><strong>${r.restingHR ?? "—"}</strong></div>
+      </div>
+      <button class="secondary" onclick="showReadinessResult()">View Readiness</button>
+    `;
+  }else{
+    card.innerHTML = `
+      <div class="pill-row"><span class="pill">Readiness</span></div>
+      <h3>No Readiness Imported</h3>
+      <p class="muted">Run your RUUT Readiness Shortcut, then paste the report here.</p>
+      <button class="secondary" onclick="openReadinessImport()">Paste Readiness Report</button>
+    `;
+  }
+
+  today.insertAdjacentElement("afterbegin", card);
+}
+
+const showScreenV951Base = showScreen;
+showScreen = function(id,btn){
+  showScreenV951Base(id,btn);
+  if(id === "today") setTimeout(renderReadinessCardV951, 50);
+};
+
+const renderAllV951Base = renderAll;
+renderAll = function(){
+  renderAllV951Base();
+  setTimeout(renderReadinessCardV951, 50);
+};
+
+setTimeout(renderReadinessCardV951, 200);
+
 renderAll();
