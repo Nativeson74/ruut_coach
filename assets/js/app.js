@@ -2201,12 +2201,26 @@ function renderReadinessCardV951(){
   const today = document.getElementById("today");
   if(!today) return;
 
-  const existing = document.getElementById("readinessCardV951");
-  if(existing) existing.remove();
+  // Remove every readiness card before rendering one clean card.
+  document.querySelectorAll("#readinessCardV951, [data-ruut-readiness-card='true']").forEach(el=>el.remove());
+
+  // Remove older readiness cards from v9.5 that did not have a stable ID.
+  Array.from(today.querySelectorAll("section.card.hero")).forEach(section=>{
+    const text=(section.innerText||"").trim();
+    if(
+      text.startsWith("Readiness") ||
+      text.includes("No Readiness Imported") ||
+      text.includes("Paste Readiness Report") ||
+      text.includes("View Readiness")
+    ){
+      section.remove();
+    }
+  });
 
   const r = state.readinessImport;
   const card = document.createElement("section");
   card.id = "readinessCardV951";
+  card.dataset.ruutReadinessCard = "true";
   card.className = "card hero";
   card.style.borderLeft = `4px solid ${r ? readinessColor(r.status) : "var(--line)"}`;
 
