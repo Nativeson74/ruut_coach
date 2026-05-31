@@ -2264,4 +2264,112 @@ renderAll = function(){
 
 setTimeout(renderReadinessCardV951, 200);
 
+
+// ---------- V9.5.3 READINESS COACH RECOMMENDATIONS ----------
+function buildReadinessCoachNoteV953(r){
+  if(!r) return "Run your RUUT Readiness Shortcut and paste the report here.";
+
+  const flags = r.flags || [];
+  const hasHighDistance = flags.some(f => /distance/i.test(f));
+  const hasHighRHR = flags.some(f => /resting/i.test(f));
+  const hasLowSleep = flags.some(f => /sleep/i.test(f));
+  const hasHighLoad = flags.some(f => /exercise load/i.test(f));
+
+  if(String(r.status).includes("Red")){
+    if(hasLowSleep && hasHighRHR){
+      return "Recovery Mode is recommended. Low sleep and elevated resting heart rate together suggest your body is not ready for a hard training day.";
+    }
+    if(hasHighDistance || hasHighLoad){
+      return "Recovery Mode is recommended. Yesterday created a high training load, so today should protect your legs, joints, and connective tissue.";
+    }
+    return "Recovery Mode is recommended. Keep movement easy, focus on mobility, and avoid forcing intensity today.";
+  }
+
+  if(String(r.status).includes("Yellow")){
+    if(hasHighDistance){
+      return "Proceed with the scheduled workout, but treat the warmup as your test. Because yesterday exceeded 10 miles, reduce pace or volume if your legs feel heavy after the first 10 minutes.";
+    }
+    if(hasHighRHR){
+      return "Proceed carefully. Resting heart rate is elevated, so keep effort controlled and avoid turning today into a hard session.";
+    }
+    if(hasLowSleep){
+      return "Proceed with caution. Sleep was low, so keep the workout smooth and reduce intensity if focus or coordination feels off.";
+    }
+    return "Proceed, but do not chase pace or extra volume. Keep the goal simple: complete the workout with good form.";
+  }
+
+  return "Proceed with the scheduled workout. Recovery markers look good, but keep the first 10 minutes controlled and let the body prove it is ready.";
+}
+
+function buildReadinessDetailHTMLV953(r){
+  if(!r) return "";
+  return `
+    <div class="detail"><strong>Coach Read</strong><p class="muted">${buildReadinessCoachNoteV953(r)}</p></div>
+    <div style="height:10px"></div>
+    <div class="detail"><strong>Imported Data</strong>
+      <p class="muted">
+        HRV: ${r.hrv ?? "—"}<br>
+        Resting HR: ${r.restingHR ?? "—"}<br>
+        Distance: ${r.distance ?? "—"} miles<br>
+        VO2 Max: ${r.vo2 ?? "—"}<br>
+        Sleep: ${r.sleepHours ?? "unavailable"}<br>
+        Exercise Minutes: ${r.exerciseMinutes ?? "unavailable"}
+      </p>
+    </div>
+  `;
+}
+
+const calculateReadinessFromImportV953Base = calculateReadinessFromImport;
+calculateReadinessFromImport = function(data){
+  const result = calculateReadinessFromImportV953Base(data);
+  result.coachNote = buildReadinessCoachNoteV953({...data, ...result});
+  if(result.status.includes("Yellow")){
+    result.recommendation = "Proceed with caution. Let the warmup decide how hard you go.";
+  }
+  if(result.status.includes("Red")){
+    result.recommendation = "Recovery Mode recommended today.";
+  }
+  if(result.status.includes("Green")){
+    result.recommendation = "Proceed with scheduled workout.";
+  }
+  return result;
+};
+
+const showReadinessResultV953Base = showReadinessResult;
+showReadinessResult = function(){
+  const r = state.readinessImport;
+  if(!r){
+    openReadinessImport();
+    return;
+  }
+
+  showModal(`<h2>RUUT Readiness</h2>
+    <div class="grid two" style="margin:12px 0">
+      <div class="stat"><span class="muted small">Status</span><strong>${r.status}</strong></div>
+      <div class="stat"><span class="muted small">HRV</span><strong>${r.hrv ?? "—"}</strong></div>
+      <div class="stat"><span class="muted small">Resting HR</span><strong>${r.restingHR ?? "—"}</strong></div>
+      <div class="stat"><span class="muted small">Distance</span><strong>${r.distance ?? "—"}</strong></div>
+    </div>
+    ${buildReadinessDetailHTMLV953(r)}
+    <div style="height:10px"></div>
+    <div class="detail"><strong>Flags</strong><p class="muted">${(r.flags&&r.flags.length)?r.flags.map(f=>"• "+f).join("<br>"):"None"}</p></div>
+    <div style="height:10px"></div>
+    <div class="detail"><strong>Notes</strong><p class="muted">${(r.notes&&r.notes.length)?r.notes.join(" "):"No extra notes."}</p></div>
+    <div style="height:12px"></div>
+    <button onclick="hideModal();openReadinessImport()">Update Import</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="hideModal()">Done</button>`);
+};
+
+const renderReadinessCardV953Base = renderReadinessCardV951;
+renderReadinessCardV951 = function(){
+  renderReadinessCardV953Base();
+  const r = state.readinessImport;
+  const card = document.getElementById("readinessCardV951");
+  if(r && card){
+    const p = card.querySelector("p.muted");
+    if(p) p.textContent = buildReadinessCoachNoteV953(r);
+  }
+};
+
 renderAll();
