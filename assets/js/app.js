@@ -3169,4 +3169,102 @@ renderAll = function(){
 
 setTimeout(renderProgressionCardV99, 400);
 
+
+// ---------- V10 COACH ACTIONS ----------
+function getCoachProfileV10(){
+  state.coachProfile = state.coachProfile || {
+    goal:"Fat Loss",
+    style:"Balanced",
+    limitations:["Weak Ankles","Occasional Back Issues"]
+  };
+  return state.coachProfile;
+}
+
+function applyProgressionRecommendationV10(){
+  const s = progressionSignalsV99();
+
+  state.trainingAdjustments = state.trainingAdjustments || [];
+  let adjustment = null;
+
+  if(s.recommendation === "PROGRESS"){
+    adjustment = {
+      date:new Date().toISOString(),
+      type:"PROGRESS",
+      amount:"+10%",
+      reason:s.summary
+    };
+  } else if(s.recommendation === "REDUCE"){
+    adjustment = {
+      date:new Date().toISOString(),
+      type:"REDUCE",
+      amount:"-10%",
+      reason:s.summary
+    };
+  } else {
+    adjustment = {
+      date:new Date().toISOString(),
+      type:"HOLD",
+      amount:"0%",
+      reason:s.summary
+    };
+  }
+
+  state.trainingAdjustments.push(adjustment);
+  saveState();
+
+  showModal(`<h2>Coach Action Applied</h2>
+    <p class="muted">${adjustment.type} recommendation recorded.</p>
+    <div class="detail">
+      <strong>Adjustment</strong>
+      <p class="muted">${adjustment.amount}</p>
+    </div>
+    <div class="detail">
+      <strong>Reason</strong>
+      <p class="muted">${adjustment.reason}</p>
+    </div>
+    <button onclick="hideModal()">Done</button>`);
+}
+
+const renderProgressionCardV10Base = renderProgressionCardV99;
+renderProgressionCardV99 = function(){
+  renderProgressionCardV10Base();
+
+  const card = document.getElementById("progressionCardV99");
+  if(!card) return;
+
+  if(!card.innerHTML.includes("Apply Recommendation")){
+    card.insertAdjacentHTML("beforeend",
+      `<div style="height:10px"></div>
+       <button onclick="applyProgressionRecommendationV10()">Apply Recommendation</button>`);
+  }
+};
+
+function renderCoachMemoryCardV10(){
+  const today = document.getElementById("today");
+  if(!today) return;
+
+  const old = document.getElementById("coachMemoryV10");
+  if(old) old.remove();
+
+  const p = getCoachProfileV10();
+
+  const card = document.createElement("section");
+  card.id = "coachMemoryV10";
+  card.className = "card hero";
+  card.innerHTML = `
+    <div class="pill-row"><span class="pill accent">Coach Memory</span></div>
+    <h3>${p.goal}</h3>
+    <p class="muted">Coaching Style: ${p.style}</p>
+    <p class="muted">Limitations: ${p.limitations.join(", ")}</p>
+  `;
+
+  today.appendChild(card);
+}
+
+const renderTodayV10Base = renderToday;
+renderToday = function(){
+  renderTodayV10Base();
+  setTimeout(renderCoachMemoryCardV10,120);
+};
+
 renderAll();
