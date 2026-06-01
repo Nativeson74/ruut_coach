@@ -2372,4 +2372,159 @@ renderReadinessCardV951 = function(){
   }
 };
 
+
+// ---------- V9.6 ADAPTIVE TRAINING ----------
+function readinessLevelV96(){
+  const r = state.readinessImport;
+  if(!r || !r.status) return "none";
+  if(String(r.status).includes("Red")) return "red";
+  if(String(r.status).includes("Yellow")) return "yellow";
+  if(String(r.status).includes("Green")) return "green";
+  return "none";
+}
+
+function cloneWorkoutV96(x){
+  try{return structuredClone(x)}catch(e){return JSON.parse(JSON.stringify(x))}
+}
+
+function adaptiveReasonV96(){
+  const r = state.readinessImport;
+  if(!r) return "No readiness import found.";
+  const flags = r.flags && r.flags.length ? r.flags.join(" ") : "";
+  if(readinessLevelV96()==="red") return "Readiness is Red, so RUUT is replacing intensity with recovery.";
+  if(/distance/i.test(flags)) return "High distance yesterday. RUUT is reducing today’s training stress.";
+  if(/resting/i.test(flags)) return "Resting heart rate is elevated. RUUT is keeping intensity controlled.";
+  if(/sleep/i.test(flags)) return "Sleep is low. RUUT is reducing intensity and protecting recovery.";
+  if(/exercise load/i.test(flags)) return "Exercise load was high yesterday. RUUT is backing off slightly.";
+  if(readinessLevelV96()==="yellow") return "Readiness is Yellow. RUUT is reducing today’s workload.";
+  return "Readiness is Green. Scheduled workout remains unchanged.";
+}
+
+function adaptWorkoutV96(x){
+  const level = readinessLevelV96();
+  const w = cloneWorkoutV96(x);
+  w.originalTitle = w.originalTitle || w.title;
+  w.originalTime = w.originalTime || w.time;
+  w.originalStructure = w.originalStructure || w.structure;
+  w.adaptiveLevel = level;
+  w.adaptiveReason = adaptiveReasonV96();
+  w.adaptiveChanged = false;
+
+  if(level === "red"){
+    return {
+      ...w,
+      type:"rest",
+      title:"Adaptive Recovery Day",
+      time:"20–30 min",
+      structure:"Easy walk plus mobility or flexibility. No hard intervals today.",
+      distance:"Easy movement only",
+      purpose:"Protect recovery and keep the habit alive without adding training stress.",
+      terrain:"Flat, easy route or recovery/flexibility work.",
+      effort:"Very easy. You should be able to breathe through your nose.",
+      success:"Finish feeling better than when you started.",
+      caution:"Do not turn recovery into a hidden workout.",
+      adaptiveChanged:true,
+      adaptiveLevel:"red",
+      adaptiveReason:adaptiveReasonV96()
+    };
+  }
+
+  if(level === "yellow"){
+    w.adaptiveChanged = true;
+
+    if(w.type === "run"){
+      const originalTotal = Number(w.total || 0);
+      const newTotal = Math.max(10, Math.round(originalTotal * 0.85));
+      w.total = newTotal;
+      w.time = `${newTotal} min`;
+      w.title = `Adaptive ${w.title}`;
+      w.structure = `${w.originalStructure}. Adaptive change: reduce total volume about 15%. Keep effort controlled.`;
+      w.distance = "Reduced volume";
+      w.effort = "Controlled. No chasing pace today.";
+      w.success = "Complete the reduced workout feeling steady, not drained.";
+
+      // For interval/hill days, make the recovery side easier without changing the whole plan.
+      if(w.day === "Wed" || /hill|interval/i.test(w.originalTitle || w.title)){
+        w.walkSeconds = Math.round((w.walkSeconds || 120) * 1.15);
+        w.structure = `${w.structure} Strong portions stay controlled. Easy portions may become walking.`;
+      }
+    }
+
+    if(w.type === "bodyweight"){
+      const originalRounds = Number(w.rounds || 1);
+      w.rounds = Math.max(1, originalRounds - 1);
+      w.time = `${w.rounds} rounds`;
+      w.title = "Adaptive Bodyweight Strength";
+      w.structure = `${w.rounds} rounds today. Adaptive change: one less round to protect recovery.`;
+      w.note = "Quality reps only. Stop before form breaks.";
+      w.success = "Clean movement and no grinding.";
+    }
+  }
+
+  return w;
+}
+
+const currentWorkoutV96Base = currentWorkout;
+currentWorkout = function(){
+  return adaptWorkoutV96(currentWorkoutV96Base());
+};
+
+function adaptiveTrainingCardV96(){
+  const x = currentWorkout();
+  const level = readinessLevelV96();
+
+  if(level === "none"){
+    return `<section class="card hero" style="border-left:4px solid var(--line)">
+      <div class="pill-row"><span class="pill">Adaptive Training</span></div>
+      <h3>No readiness data yet</h3>
+      <p class="muted">Paste your RUUT Readiness report to let RUUT adjust today’s workout.</p>
+    </section>`;
+  }
+
+  const color = level==="green" ? "var(--accent)" : level==="yellow" ? "var(--gold)" : "var(--danger)";
+  const title = level==="green" ? "Scheduled Plan Active" : level==="yellow" ? "Workout Modified" : "Recovery Substitution";
+  const change = x.adaptiveChanged
+    ? `<p class="muted"><strong>Original:</strong> ${x.originalTitle || "Scheduled workout"} ${x.originalTime ? "• "+x.originalTime : ""}</p>
+       <p class="muted"><strong>Today:</strong> ${x.title} • ${x.time}</p>`
+    : `<p class="muted">No modification needed today.</p>`;
+
+  return `<section class="card hero" style="border-left:4px solid ${color}">
+    <div class="pill-row"><span class="pill accent">Adaptive Training</span><span class="pill">${level.toUpperCase()}</span></div>
+    <h3>${title}</h3>
+    <p class="muted">${x.adaptiveReason}</p>
+    ${change}
+  </section>`;
+}
+
+const renderTodayV96Base = renderToday;
+renderToday = function(){
+  renderTodayV96Base();
+  const today = document.getElementById("today");
+  if(today && !document.getElementById("adaptiveTrainingV96")){
+    const wrap = document.createElement("div");
+    wrap.id = "adaptiveTrainingV96";
+    wrap.innerHTML = adaptiveTrainingCardV96();
+    const readinessCard = document.getElementById("readinessCardV951");
+    if(readinessCard && readinessCard.nextSibling){
+      readinessCard.parentNode.insertBefore(wrap, readinessCard.nextSibling);
+    }else{
+      today.insertAdjacentElement("afterbegin", wrap);
+    }
+  }
+};
+
+const beginWorkoutV96Base = beginWorkout;
+beginWorkout = async function(readiness){
+  const x = currentWorkout();
+  if(x.adaptiveChanged){
+    if(x.adaptiveLevel === "yellow"){
+      await cue("Adaptive training active. Today’s workout has been reduced based on readiness.");
+    }
+    if(x.adaptiveLevel === "red"){
+      await cue("Adaptive recovery active. Hard training is replaced with easy movement today.");
+    }
+  }
+  return beginWorkoutV96Base(readiness);
+};
+
 renderAll();
