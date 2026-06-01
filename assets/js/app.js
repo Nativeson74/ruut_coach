@@ -2761,4 +2761,223 @@ finishWorkout = async function(){
   openWorkoutDebriefV97(snap);
 };
 
+
+// ---------- V9.8 ADAPTIVE COACH NOTES ----------
+function coachReadinessSummaryV98(){
+  const r = state.readinessImport;
+  if(!r || !r.status){
+    return {
+      status:"Not imported",
+      line:"No readiness report has been imported yet.",
+      tone:"neutral"
+    };
+  }
+
+  if(String(r.status).includes("Green")){
+    return {
+      status:r.status,
+      line:"Readiness is Green. Recovery markers support the scheduled workout.",
+      tone:"green"
+    };
+  }
+
+  if(String(r.status).includes("Yellow")){
+    return {
+      status:r.status,
+      line:"Readiness is Yellow. RUUT should favor controlled effort over extra intensity.",
+      tone:"yellow"
+    };
+  }
+
+  return {
+    status:r.status,
+    line:"Readiness is Red. Recovery should take priority over hard training.",
+    tone:"red"
+  };
+}
+
+function coachDebriefSummaryV98(){
+  const recent = (state.workoutDebriefs || []).slice(-5);
+  if(!recent.length){
+    return {
+      line:"No workout debriefs logged yet. Save a few debriefs after workouts so RUUT can start learning from your actual effort.",
+      trend:"No trend yet",
+      issues:"None recorded",
+      recommendation:"Use today's readiness and complete the plan with discipline."
+    };
+  }
+
+  const feels = recent.map(d=>d.feel || "Not rated").filter(Boolean);
+  const issues = recent.map(d=>d.issue || "None").filter(i=>i && i !== "None" && i !== "Not recorded");
+
+  const easy = feels.filter(f=>f==="Easy").length;
+  const moderate = feels.filter(f=>f==="Moderate").length;
+  const hard = feels.filter(f=>f==="Hard").length;
+  const veryHard = feels.filter(f=>f==="Very Hard").length;
+  const heavyLegs = issues.filter(i=>i==="Heavy Legs").length;
+  const pain = issues.filter(i=>i==="Pain").length;
+  const lowEnergy = issues.filter(i=>i==="Low Energy").length;
+  const breathing = issues.filter(i=>i==="Breathing").length;
+
+  let trend = `${recent.length} recent debrief${recent.length===1?"":"s"} logged`;
+  let recommendation = "Debrief trend looks stable. Continue with the current plan.";
+  let line = "Recent debriefs do not show a major fatigue pattern.";
+
+  if(pain >= 2){
+    line = "Pain has appeared more than once recently.";
+    recommendation = "Avoid intensity and prioritize Recovery Mode until pain is no longer recurring.";
+  }else if(heavyLegs >= 2 || veryHard >= 2){
+    line = "Heavy legs or very hard efforts are showing up repeatedly.";
+    recommendation = "Keep today's workout controlled. Prioritize completion over pace, and avoid adding extra volume.";
+  }else if(hard + veryHard >= 3){
+    line = "Several recent workouts have felt hard.";
+    recommendation = "Hold the current training level. Do not increase volume yet.";
+  }else if(easy >= 3 && issues.length===0){
+    line = "Recent workouts are trending easy with no issues.";
+    recommendation = "You are adapting well. Stay disciplined today, and if the workout still feels easy, RUUT may be ready for progression soon.";
+  }else if(lowEnergy >= 2){
+    line = "Low energy has appeared more than once recently.";
+    recommendation = "Keep intensity conservative and watch sleep, food, and recovery before pushing harder.";
+  }else if(breathing >= 2){
+    line = "Breathing has been a repeated issue.";
+    recommendation = "Stay at conversational effort during easy segments and avoid sprinting the hard portions.";
+  }
+
+  return {
+    line,
+    trend,
+    issues: issues.length ? [...new Set(issues)].join(", ") : "None reported",
+    feels: feels.join(", "),
+    recommendation
+  };
+}
+
+function coachWorkoutContextV98(){
+  const x = currentWorkout();
+  if(!x) return "No workout selected.";
+
+  if(x.type==="run"){
+    if(x.day==="Wed" || /interval|hill/i.test(x.title)){
+      return "Today's workout has intensity. Strong portions should be controlled, not reckless. Easy portions can be walking if needed.";
+    }
+    if(x.day==="Sat"){
+      return "Today is the long-run slot. The goal is patience, rhythm, and finishing with control.";
+    }
+    return "Today is a run day. The goal is steady aerobic work and consistency.";
+  }
+
+  if(x.type==="bodyweight"){
+    return "Today is strength work. Clean reps matter more than speed. Stop before form breaks.";
+  }
+
+  return "Today is recovery or rest. Move easy and protect tomorrow's training.";
+}
+
+function buildCoachNotesV98(){
+  const readiness = coachReadinessSummaryV98();
+  const debrief = coachDebriefSummaryV98();
+  const workoutContext = coachWorkoutContextV98();
+
+  let mainRecommendation = debrief.recommendation;
+
+  if(readiness.tone==="red"){
+    mainRecommendation = "Recovery Mode is the recommended choice today. If you continue with the scheduled workout, keep it very easy.";
+  }else if(readiness.tone==="yellow"){
+    mainRecommendation = `${debrief.recommendation} Since readiness is Yellow, use the warmup as the test and back off if anything feels off.`;
+  }else if(readiness.tone==="green" && debrief.recommendation.includes("adapting well")){
+    mainRecommendation = "Proceed with today's workout. If effort feels controlled and form stays clean, finish the final segment with confidence.";
+  }
+
+  return {
+    readiness,
+    debrief,
+    workoutContext,
+    mainRecommendation
+  };
+}
+
+function renderCoachNotesCardV98(){
+  const today = document.getElementById("today");
+  if(!today) return;
+
+  const existing = document.getElementById("coachNotesV98");
+  if(existing) existing.remove();
+
+  const notes = buildCoachNotesV98();
+  const color = notes.readiness.tone==="green" ? "var(--accent)" : notes.readiness.tone==="yellow" ? "var(--gold)" : notes.readiness.tone==="red" ? "var(--danger)" : "var(--line)";
+
+  const card = document.createElement("section");
+  card.id = "coachNotesV98";
+  card.className = "card hero";
+  card.style.borderLeft = `4px solid ${color}`;
+  card.innerHTML = `
+    <div class="pill-row">
+      <span class="pill accent">Coach's Notes</span>
+      <span class="pill">${notes.readiness.status}</span>
+    </div>
+    <h3>Today's Coaching Read</h3>
+    <p class="muted">${notes.readiness.line}</p>
+    <div class="detail"><strong>Workout Context</strong><p class="muted">${notes.workoutContext}</p></div>
+    <div style="height:10px"></div>
+    <div class="detail"><strong>Recent Debrief Trend</strong><p class="muted">${notes.debrief.line}</p></div>
+    <div style="height:10px"></div>
+    <div class="detail"><strong>Coach Recommendation</strong><p class="muted">${notes.mainRecommendation}</p></div>
+    <div style="height:10px"></div>
+    <button class="secondary" onclick="showCoachNotesDetailV98()">View Details</button>
+  `;
+
+  const adaptive = document.getElementById("adaptiveTrainingV96");
+  if(adaptive && adaptive.nextSibling){
+    adaptive.parentNode.insertBefore(card, adaptive.nextSibling);
+  }else{
+    const readiness = document.getElementById("readinessCardV951");
+    if(readiness && readiness.nextSibling){
+      readiness.parentNode.insertBefore(card, readiness.nextSibling);
+    }else{
+      today.insertAdjacentElement("afterbegin", card);
+    }
+  }
+}
+
+function showCoachNotesDetailV98(){
+  const notes = buildCoachNotesV98();
+  showModal(`<h2>Coach's Notes</h2>
+    <div class="detail"><strong>Readiness</strong><p class="muted">${notes.readiness.line}</p></div>
+    <div style="height:10px"></div>
+    <div class="detail"><strong>Workout Context</strong><p class="muted">${notes.workoutContext}</p></div>
+    <div style="height:10px"></div>
+    <div class="detail"><strong>Recent Debriefs</strong>
+      <p class="muted">
+        Trend: ${notes.debrief.trend}<br>
+        Feel: ${notes.debrief.feels || "No debriefs yet"}<br>
+        Issues: ${notes.debrief.issues}
+      </p>
+    </div>
+    <div style="height:10px"></div>
+    <div class="detail"><strong>Recommendation</strong><p class="muted">${notes.mainRecommendation}</p></div>
+    <div style="height:12px"></div>
+    <button onclick="hideModal()">Done</button>
+  `);
+}
+
+const renderTodayV98Base = renderToday;
+renderToday = function(){
+  renderTodayV98Base();
+  setTimeout(renderCoachNotesCardV98, 50);
+};
+
+const showScreenV98Base = showScreen;
+showScreen = function(id,btn){
+  showScreenV98Base(id,btn);
+  if(id==="today") setTimeout(renderCoachNotesCardV98, 50);
+};
+
+const renderAllV98Base = renderAll;
+renderAll = function(){
+  renderAllV98Base();
+  setTimeout(renderCoachNotesCardV98, 50);
+};
+
+setTimeout(renderCoachNotesCardV98, 300);
+
 renderAll();
