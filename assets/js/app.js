@@ -2527,4 +2527,238 @@ beginWorkout = async function(readiness){
   return beginWorkoutV96Base(readiness);
 };
 
+
+// ---------- V9.7 WORKOUT DEBRIEF + REMOVE REDUNDANT PRE-CHECK ----------
+function hasImportedReadinessV97(){
+  return !!(state.readinessImport && state.readinessImport.status);
+}
+
+// If imported readiness exists, skip the old manual readiness check.
+// If no imported readiness exists, keep the old manual check as a fallback.
+const startWorkoutV97Base = startWorkout;
+startWorkout = function(){
+  workoutAbort=false;
+  skipCurrentTimer=false;
+  workoutPaused=false;
+
+  if(hasImportedReadinessV97()){
+    beginWorkout("imported");
+    return;
+  }
+
+  return startWorkoutV97Base();
+};
+
+function workoutDebriefOptionsV97(){
+  return {
+    feel:["Easy","Moderate","Hard","Very Hard"],
+    issue:["None","Heavy Legs","Breathing","Low Energy","Pain","Other"]
+  };
+}
+
+function openWorkoutDebriefV97(snapshot){
+  const opts = workoutDebriefOptionsV97();
+  const snap = snapshot || lastCompletedSnapshotV9 || {
+    week:state.week,
+    dayIndex:state.dayIndex,
+    day:currentWorkout().day,
+    title:currentWorkout().title,
+    type:currentWorkout().type,
+    date:new Date().toLocaleDateString(),
+    iso:new Date().toISOString()
+  };
+
+  showModal(`<h2>Workout Debrief</h2>
+    <p class="muted" style="margin:8px 0 14px">${snap.day || ""} — ${snap.title || "Workout"}</p>
+
+    <div class="detail"><strong>How did it feel?</strong>
+      <div class="choice-grid" style="margin-top:10px">
+        ${opts.feel.map(v=>`<button class="choice-btn" data-choice="debriefFeel" data-value="${v}" onclick="selectChoice('debriefFeel','${v}')">${v}</button>`).join("")}
+      </div>
+      <input id="debriefFeelValue" type="hidden" value="">
+    </div>
+
+    <div style="height:12px"></div>
+
+    <div class="detail"><strong>Any issues?</strong>
+      <div class="choice-grid" style="margin-top:10px">
+        ${opts.issue.map(v=>`<button class="choice-btn" data-choice="debriefIssue" data-value="${v}" onclick="selectChoice('debriefIssue','${v}')">${v}</button>`).join("")}
+      </div>
+      <input id="debriefIssueValue" type="hidden" value="">
+    </div>
+
+    <div style="height:12px"></div>
+
+    <div class="detail"><strong>Notes</strong>
+      <textarea id="debriefNote" placeholder="Optional: route, weather, fatigue, pain location, what felt good..."></textarea>
+    </div>
+
+    <div style="height:12px"></div>
+    <button onclick="saveWorkoutDebriefV97()">Save Debrief</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="hideModal()">Skip</button>
+  `);
+
+  window.pendingDebriefSnapshotV97 = snap;
+}
+
+function saveWorkoutDebriefV97(){
+  const snap = window.pendingDebriefSnapshotV97 || lastCompletedSnapshotV9 || {};
+  const feel = document.getElementById("debriefFeelValue")?.value || "Not rated";
+  const issue = document.getElementById("debriefIssueValue")?.value || "Not recorded";
+  const note = document.getElementById("debriefNote")?.value || "";
+
+  state.workoutDebriefs = state.workoutDebriefs || [];
+  state.workoutDebriefs.push({
+    date:snap.date || new Date().toLocaleDateString(),
+    iso:snap.iso || new Date().toISOString(),
+    week:snap.week ?? state.week,
+    dayIndex:snap.dayIndex ?? state.dayIndex,
+    day:snap.day || currentWorkout().day,
+    title:snap.title || currentWorkout().title,
+    type:snap.type || currentWorkout().type,
+    readiness:state.readinessImport?.status || "Not imported",
+    feel,
+    issue,
+    note
+  });
+
+  // Also add a journal entry so current Journal screen remains useful.
+  state.journal = state.journal || [];
+  state.journal.push({
+    date:snap.date || new Date().toLocaleDateString(),
+    iso:snap.iso || new Date().toISOString(),
+    workout:`W${snap.week ?? state.week} D${snap.dayIndex ?? state.dayIndex} ${snap.title || currentWorkout().title}`,
+    type:snap.type || currentWorkout().type,
+    routeMode:settings.routeMode,
+    feel,
+    pain:issue,
+    note
+  });
+
+  saveState();
+  hideModal();
+}
+
+function debriefTrendV97(){
+  const recent = (state.workoutDebriefs || []).slice(-5);
+  let hard=0, veryHard=0, issues=0, pain=0, heavyLegs=0;
+
+  recent.forEach(d=>{
+    if(d.feel==="Hard") hard++;
+    if(d.feel==="Very Hard") veryHard++;
+    if(d.issue && d.issue!=="None" && d.issue!=="Not recorded") issues++;
+    if(d.issue==="Pain") pain++;
+    if(d.issue==="Heavy Legs") heavyLegs++;
+  });
+
+  return {recent, hard, veryHard, issues, pain, heavyLegs};
+}
+
+function debriefCoachNoteV97(){
+  const t = debriefTrendV97();
+
+  if(t.recent.length < 2){
+    return "Debrief history is still building. Save a few workout debriefs and RUUT will start recognizing patterns.";
+  }
+
+  if(t.pain >= 2){
+    return "Pain has shown up more than once recently. RUUT should prioritize recovery and avoid intensity until this clears.";
+  }
+
+  if(t.heavyLegs >= 2 || t.veryHard >= 2){
+    return "Heavy legs or very hard efforts are trending. RUUT should reduce volume before adding more load.";
+  }
+
+  if(t.hard + t.veryHard >= 3){
+    return "Several recent workouts have felt hard. Maintain discipline, but avoid extra challenge work right now.";
+  }
+
+  return "Debrief trend looks stable. Training can continue as planned.";
+}
+
+// Add debrief trend to dashboard.
+const renderDashboardV97Base = renderDashboard;
+renderDashboard = function(){
+  renderDashboardV97Base();
+  const dash = document.getElementById("dashboard");
+  if(!dash) return;
+
+  const old = document.getElementById("debriefTrendV97");
+  if(old) old.remove();
+
+  const t = debriefTrendV97();
+  const card = document.createElement("section");
+  card.id = "debriefTrendV97";
+  card.className = "card hero";
+  card.innerHTML = `
+    <h3>Workout Debrief Trend</h3>
+    <p class="muted">${debriefCoachNoteV97()}</p>
+    <div class="grid two">
+      <div class="stat"><span class="muted small">Recent Debriefs</span><strong>${t.recent.length}</strong></div>
+      <div class="stat"><span class="muted small">Issues Reported</span><strong>${t.issues}</strong></div>
+      <div class="stat"><span class="muted small">Very Hard</span><strong>${t.veryHard}</strong></div>
+      <div class="stat"><span class="muted small">Heavy Legs</span><strong>${t.heavyLegs}</strong></div>
+    </div>
+  `;
+  dash.insertAdjacentElement("afterbegin", card);
+};
+
+// Fold debrief trend into adaptive training.
+const adaptWorkoutV97Base = adaptWorkoutV96;
+adaptWorkoutV96 = function(x){
+  let w = adaptWorkoutV97Base(x);
+  const t = debriefTrendV97();
+
+  if(w.adaptiveLevel==="green" || w.adaptiveLevel==="none"){
+    if((t.heavyLegs >= 2 || t.veryHard >= 2) && w.type==="run"){
+      w = cloneWorkoutV96(w);
+      w.adaptiveChanged = true;
+      w.adaptiveLevel = "yellow";
+      w.adaptiveReason = "Recent workout debriefs show heavy legs or very hard efforts. RUUT is reducing today’s run slightly.";
+      const newTotal = Math.max(10, Math.round((w.total || 20) * 0.9));
+      w.total = newTotal;
+      w.time = `${newTotal} min`;
+      w.title = `Adaptive ${w.title}`;
+      w.structure = `${w.originalStructure || w.structure}. Debrief adjustment: reduce volume about 10%.`;
+      w.effort = "Controlled. Finish steady rather than hard.";
+    }
+
+    if((t.heavyLegs >= 2 || t.veryHard >= 2) && w.type==="bodyweight"){
+      w = cloneWorkoutV96(w);
+      w.adaptiveChanged = true;
+      w.adaptiveLevel = "yellow";
+      w.adaptiveReason = "Recent debriefs show fatigue. RUUT is reducing strength volume slightly.";
+      w.rounds = Math.max(1,(w.rounds || 2)-1);
+      w.time = `${w.rounds} rounds`;
+      w.title = "Adaptive Bodyweight Strength";
+      w.structure = `${w.rounds} rounds today. Debrief adjustment: one less round.`;
+    }
+  }
+
+  return w;
+};
+
+// Replace completion flow with debrief first.
+finishWorkout = async function(){
+  setCue("Complete");
+  setTimer("DONE");
+  setWorkoutMessage("Workout complete. Save a quick debrief.");
+  await cue("Workout complete. Save a quick debrief.");
+  markComplete(false);
+  releaseWakeLock();
+
+  const snap = lastCompletedSnapshotV9 || {
+    week:state.week,
+    dayIndex:state.dayIndex,
+    day:currentWorkout().day,
+    title:currentWorkout().title,
+    type:currentWorkout().type,
+    date:new Date().toLocaleDateString(),
+    iso:new Date().toISOString()
+  };
+
+  openWorkoutDebriefV97(snap);
+};
+
 renderAll();
