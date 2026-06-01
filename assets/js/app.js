@@ -2980,4 +2980,193 @@ renderAll = function(){
 
 setTimeout(renderCoachNotesCardV98, 300);
 
+
+// ---------- V9.9 ADAPTIVE PROGRESSION ----------
+function progressionSignalsV99(){
+  const deb = (state.workoutDebriefs || []).slice(-7);
+  const readiness = state.readinessImport?.status || "Not imported";
+
+  let easy=0, moderate=0, hard=0, veryHard=0, issues=0, pain=0, heavyLegs=0, lowEnergy=0;
+  deb.forEach(d=>{
+    if(d.feel==="Easy") easy++;
+    if(d.feel==="Moderate") moderate++;
+    if(d.feel==="Hard") hard++;
+    if(d.feel==="Very Hard") veryHard++;
+    if(d.issue && d.issue!=="None" && d.issue!=="Not recorded") issues++;
+    if(d.issue==="Pain") pain++;
+    if(d.issue==="Heavy Legs") heavyLegs++;
+    if(d.issue==="Low Energy") lowEnergy++;
+  });
+
+  const green = String(readiness).includes("Green");
+  const yellow = String(readiness).includes("Yellow");
+  const red = String(readiness).includes("Red");
+
+  let recommendation = "HOLD";
+  let title = "Hold Current Load";
+  let summary = "Not enough signal to change training load yet. Continue the current plan.";
+  let action = "Keep this week as written.";
+  let confidence = deb.length >= 3 ? "Moderate" : "Low";
+
+  if(deb.length >= 3){
+    if(pain >= 1 || red || veryHard >= 2 || heavyLegs >= 2){
+      recommendation = "REDUCE";
+      title = "Reduce Next Training Load";
+      summary = "Recent feedback suggests accumulated stress. RUUT should reduce load before pushing progression.";
+      action = "Reduce next comparable workout by about 10–15%, or choose Recovery Mode if symptoms persist.";
+      confidence = "High";
+    }else if(green && easy >= 2 && issues === 0){
+      recommendation = "PROGRESS";
+      title = "Progression Available";
+      summary = "Recent workouts are trending manageable with no issues. RUUT can safely consider a small progression.";
+      action = "Increase next comparable workout slightly: about 5–10% volume, or a controlled final interval.";
+      confidence = "Moderate";
+    }else if(yellow || hard >= 2 || lowEnergy >= 1){
+      recommendation = "HOLD";
+      title = "Hold and Stabilize";
+      summary = "Training is productive but not ready for an increase. Hold the current level and avoid extra volume.";
+      action = "Complete the plan as written, with no bonus work.";
+      confidence = "Moderate";
+    }
+  }
+
+  return {
+    deb,
+    easy, moderate, hard, veryHard, issues, pain, heavyLegs, lowEnergy,
+    readiness,
+    recommendation,
+    title,
+    summary,
+    action,
+    confidence
+  };
+}
+
+function progressionColorV99(kind){
+  if(kind==="PROGRESS") return "var(--accent)";
+  if(kind==="REDUCE") return "var(--danger)";
+  return "var(--gold)";
+}
+
+function renderProgressionCardV99(){
+  const today = document.getElementById("today");
+  if(!today) return;
+
+  const old = document.getElementById("progressionCardV99");
+  if(old) old.remove();
+
+  const s = progressionSignalsV99();
+  const card = document.createElement("section");
+  card.id = "progressionCardV99";
+  card.className = "card hero";
+  card.style.borderLeft = `4px solid ${progressionColorV99(s.recommendation)}`;
+  card.innerHTML = `
+    <div class="pill-row">
+      <span class="pill accent">Adaptive Progression</span>
+      <span class="pill">${s.recommendation}</span>
+      <span class="pill">Confidence: ${s.confidence}</span>
+    </div>
+    <h3>${s.title}</h3>
+    <p class="muted">${s.summary}</p>
+    <div class="detail"><strong>Action</strong><p class="muted">${s.action}</p></div>
+    <div style="height:10px"></div>
+    <button class="secondary" onclick="showProgressionDetailV99()">View Progression Detail</button>
+  `;
+
+  const coach = document.getElementById("coachNotesV98");
+  if(coach && coach.nextSibling){
+    coach.parentNode.insertBefore(card, coach.nextSibling);
+  }else{
+    today.insertAdjacentElement("afterbegin", card);
+  }
+}
+
+function showProgressionDetailV99(){
+  const s = progressionSignalsV99();
+  const rows = s.deb.slice().reverse().map(d=>`
+    <div class="row" style="align-items:flex-start">
+      <div>
+        <strong>${d.date || ""}</strong>
+        <p class="muted small">${d.title || "Workout"} — ${d.feel || "Not rated"}${d.issue && d.issue!=="None" ? " • "+d.issue : ""}</p>
+        ${d.note ? `<p class="muted small">${d.note}</p>` : ""}
+      </div>
+    </div>
+  `).join("");
+
+  showModal(`<h2>Adaptive Progression</h2>
+    <div class="detail"><strong>Recommendation</strong><p class="muted">${s.title}</p></div>
+    <div style="height:10px"></div>
+    <div class="detail"><strong>Why</strong><p class="muted">${s.summary}</p></div>
+    <div style="height:10px"></div>
+    <div class="detail"><strong>Action</strong><p class="muted">${s.action}</p></div>
+    <div style="height:10px"></div>
+    <div class="grid two">
+      <div class="stat"><span class="muted small">Easy</span><strong>${s.easy}</strong></div>
+      <div class="stat"><span class="muted small">Moderate</span><strong>${s.moderate}</strong></div>
+      <div class="stat"><span class="muted small">Hard</span><strong>${s.hard}</strong></div>
+      <div class="stat"><span class="muted small">Very Hard</span><strong>${s.veryHard}</strong></div>
+      <div class="stat"><span class="muted small">Issues</span><strong>${s.issues}</strong></div>
+      <div class="stat"><span class="muted small">Readiness</span><strong>${s.readiness}</strong></div>
+    </div>
+    <div style="height:12px"></div>
+    <h3>Recent Debriefs</h3>
+    <div class="list">${rows || '<p class="muted">No debriefs yet.</p>'}</div>
+    <div style="height:12px"></div>
+    <button onclick="hideModal()">Done</button>
+  `);
+}
+
+// Apply only small same-day changes, not future-week rewrites yet.
+const adaptWorkoutV99Base = adaptWorkoutV96;
+adaptWorkoutV96 = function(x){
+  let w = adaptWorkoutV99Base(x);
+  const s = progressionSignalsV99();
+
+  if(s.recommendation==="REDUCE" && !w.adaptiveChanged){
+    w = cloneWorkoutV96(w);
+    w.adaptiveChanged = true;
+    w.adaptiveLevel = "yellow";
+    w.adaptiveReason = "Adaptive Progression recommends reducing load based on recent debriefs.";
+
+    if(w.type==="run"){
+      const newTotal = Math.max(10, Math.round((w.total || 20) * 0.9));
+      w.total = newTotal;
+      w.time = `${newTotal} min`;
+      w.title = `Adaptive ${w.title}`;
+      w.structure = `${w.originalStructure || w.structure}. Progression adjustment: reduce volume about 10%.`;
+      w.effort = "Controlled and conservative.";
+    }
+
+    if(w.type==="bodyweight"){
+      w.rounds = Math.max(1,(w.rounds || 2)-1);
+      w.time = `${w.rounds} rounds`;
+      w.title = "Adaptive Bodyweight Strength";
+      w.structure = `${w.rounds} rounds today. Progression adjustment: one less round.`;
+    }
+  }
+
+  // For progression, do not automatically increase yet. We only recommend.
+  return w;
+};
+
+const renderTodayV99Base = renderToday;
+renderToday = function(){
+  renderTodayV99Base();
+  setTimeout(renderProgressionCardV99, 80);
+};
+
+const showScreenV99Base = showScreen;
+showScreen = function(id,btn){
+  showScreenV99Base(id,btn);
+  if(id==="today") setTimeout(renderProgressionCardV99, 80);
+};
+
+const renderAllV99Base = renderAll;
+renderAll = function(){
+  renderAllV99Base();
+  setTimeout(renderProgressionCardV99, 80);
+};
+
+setTimeout(renderProgressionCardV99, 400);
+
 renderAll();
