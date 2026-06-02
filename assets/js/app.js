@@ -3843,4 +3843,186 @@ renderAll = function(){
 
 setTimeout(renderDynamicPlanCardV102, 500);
 
+
+// ---------- V10.3 WEEKLY REVIEW + STATUS TYPES + GOAL ENGINE + CONFIDENCE ----------
+function coachProfileDefaultsV103(){
+  return {goal:"Fat Loss",style:"Balanced",limitations:["Weak Ankles","Occasional Back Issues"]};
+}
+function getCoachProfileV103(){
+  state.coachProfile = {...coachProfileDefaultsV103(), ...(state.coachProfile || {})};
+  state.coachProfile.limitations = state.coachProfile.limitations || [];
+  return state.coachProfile;
+}
+function saveCoachProfileV103(){
+  const goal=document.getElementById("coachGoalV103")?.value||"Fat Loss";
+  const style=document.getElementById("coachStyleV103")?.value||"Balanced";
+  const limitations=Array.from(document.querySelectorAll("[data-limit-v103]")).filter(x=>x.checked).map(x=>x.value);
+  state.coachProfile={goal,style,limitations};
+  saveState();
+  hideModal();
+}
+function openCoachProfileV103(){
+  const p=getCoachProfileV103(), has=v=>p.limitations.includes(v);
+  showModal(`<h2>Coach Memory</h2>
+    <p class="muted" style="margin:8px 0 12px">Set the coaching context RUUT should remember when making decisions.</p>
+    <label class="small muted">Primary Goal</label>
+    <select id="coachGoalV103">
+      ${["Fat Loss","Half Marathon","General Fitness","Trail Endurance","Mountain Conditioning"].map(g=>`<option ${p.goal===g?"selected":""}>${g}</option>`).join("")}
+    </select>
+    <div style="height:10px"></div>
+    <label class="small muted">Coaching Style</label>
+    <select id="coachStyleV103">
+      ${["Encouraging","Balanced","Tough Love"].map(s=>`<option ${p.style===s?"selected":""}>${s}</option>`).join("")}
+    </select>
+    <div style="height:12px"></div>
+    <div class="detail"><strong>Known Limitations</strong>
+      <p class="muted small">These guide safer recommendations.</p>
+      ${["Weak Ankles","Occasional Back Issues","Heavy Legs Trend","Low Energy Trend"].map(v=>`<label><input type="checkbox" data-limit-v103 value="${v}" ${has(v)?"checked":""}> ${v}</label><br>`).join("")}
+    </div>
+    <div style="height:12px"></div>
+    <button onclick="saveCoachProfileV103()">Save Coach Memory</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="hideModal()">Cancel</button>`);
+}
+
+function statusTypeForWorkoutV103(){
+  const w=currentWorkout();
+  const approved=typeof getApprovedPlanV102==="function"?getApprovedPlanV102():null;
+  if(w?.type==="rest" && approved?.mode==="RECOVERY") return "Recovery Substitution";
+  if(w?.type==="rest") return "Planned Rest";
+  if(approved && approved.mode && approved.mode!=="HOLD") return "Modified Workout";
+  return "Completed";
+}
+
+const markDailyStatusV103Base = typeof markDailyStatusV101 === "function" ? markDailyStatusV101 : null;
+markDailyStatusV101 = function(status,key=currentKey(),dayStamp=state.currentDayStamp || (typeof effectiveDayStampV101==="function"?effectiveDayStampV101():new Date().toISOString().slice(0,10))){
+  const normalized=status==="completed"?statusTypeForWorkoutV103():status;
+  if(markDailyStatusV103Base) return markDailyStatusV103Base(normalized,key,dayStamp);
+  state.dailyStatus=state.dailyStatus||{};
+  state.dailyStatus[dayStamp]={key,status:normalized,updatedAt:new Date().toISOString()};
+};
+
+function statusCountsV103(days=7){
+  const hist=(state.workoutHistory||[]).slice(-days);
+  const counts={Completed:0,"Modified Workout":0,"Recovery Substitution":0,"Planned Rest":0,missed:0,skipped:0};
+  hist.forEach(x=>{const s=x.status||""; if(counts[s]!==undefined) counts[s]++;});
+  return {hist,counts};
+}
+function recommendationConfidenceV103(){
+  const deb=(state.workoutDebriefs||[]).length;
+  const ready=(state.readinessHistory||[]).length+(state.readinessImport?1:0);
+  const hist=(state.workoutHistory||[]).length;
+  const total=deb+ready+hist;
+  if(total>=21 && deb>=6 && ready>=5) return {label:"High",reason:"RUUT has enough readiness, completion, and debrief history to make stronger recommendations."};
+  if(total>=8 && deb>=2) return {label:"Moderate",reason:"RUUT has some useful history, but recommendations should still be treated as guidance."};
+  return {label:"Low",reason:"RUUT is still learning. Use recommendations carefully until more workouts and readiness reports are logged."};
+}
+function weeklyCoachReviewV103(){
+  const s=statusCountsV103(7);
+  const deb=(state.workoutDebriefs||[]).slice(-7);
+  const ready=(state.readinessHistory||[]).slice(-7);
+  if(state.readinessImport) ready.push(state.readinessImport);
+  const green=ready.filter(r=>String(r.status).includes("Green")).length;
+  const yellow=ready.filter(r=>String(r.status).includes("Yellow")).length;
+  const red=ready.filter(r=>String(r.status).includes("Red")).length;
+  const pain=deb.filter(d=>d.issue==="Pain").length;
+  const heavy=deb.filter(d=>d.issue==="Heavy Legs").length;
+  const veryHard=deb.filter(d=>d.feel==="Very Hard").length;
+  let assessment="Consistency is building. Keep following the plan and logging debriefs.";
+  if(pain>0 || red>=2) assessment="Recovery needs attention. Pain or repeated Red readiness means progression should pause.";
+  else if(s.counts.Completed+s.counts["Modified Workout"]>=4 && pain===0 && red===0) assessment="Consistency looks strong. RUUT can continue steady progression if workouts remain controlled.";
+  else if(s.counts.missed+s.counts.skipped>=2) assessment="Consistency slipped this week. Rebuild rhythm before increasing training load.";
+  else if(heavy>=2 || veryHard>=2) assessment="Fatigue is showing. Hold current load and prioritize clean completion.";
+  return {status:s,deb,ready:{green,yellow,red},pain,heavy,veryHard,assessment};
+}
+function renderWeeklyReviewCardV103(){
+  const today=document.getElementById("today"); if(!today) return;
+  document.getElementById("weeklyReviewV103")?.remove();
+  const r=weeklyCoachReviewV103(), c=recommendationConfidenceV103();
+  const card=document.createElement("section");
+  card.id="weeklyReviewV103"; card.className="card hero"; card.style.borderLeft="4px solid var(--accent2)";
+  card.innerHTML=`<div class="pill-row"><span class="pill accent">Weekly Coach Review</span><span class="pill">Confidence: ${c.label}</span></div>
+    <h3>Last 7 Days</h3><p class="muted">${r.assessment}</p>
+    <div class="grid two">
+      <div class="stat"><span class="muted small">Completed</span><strong>${r.status.counts.Completed+r.status.counts["Modified Workout"]}</strong></div>
+      <div class="stat"><span class="muted small">Missed/Skipped</span><strong>${r.status.counts.missed+r.status.counts.skipped}</strong></div>
+      <div class="stat"><span class="muted small">Recovery Subs</span><strong>${r.status.counts["Recovery Substitution"]}</strong></div>
+      <div class="stat"><span class="muted small">Red Readiness</span><strong>${r.ready.red}</strong></div>
+    </div>
+    <div style="height:10px"></div><button class="secondary" onclick="showWeeklyReviewDetailV103()">View Weekly Review</button>`;
+  const dynamic=document.getElementById("dynamicPlanV102");
+  if(dynamic && dynamic.nextSibling) dynamic.parentNode.insertBefore(card,dynamic.nextSibling); else today.appendChild(card);
+}
+function showWeeklyReviewDetailV103(){
+  const r=weeklyCoachReviewV103(), c=recommendationConfidenceV103();
+  showModal(`<h2>Weekly Coach Review</h2>
+    <div class="detail"><strong>Assessment</strong><p class="muted">${r.assessment}</p></div>
+    <div style="height:10px"></div>
+    <div class="detail"><strong>Confidence</strong><p class="muted">${c.label}: ${c.reason}</p></div>
+    <div style="height:10px"></div>
+    <div class="grid two">
+      <div class="stat"><span class="muted small">Completed</span><strong>${r.status.counts.Completed}</strong></div>
+      <div class="stat"><span class="muted small">Modified</span><strong>${r.status.counts["Modified Workout"]}</strong></div>
+      <div class="stat"><span class="muted small">Recovery Subs</span><strong>${r.status.counts["Recovery Substitution"]}</strong></div>
+      <div class="stat"><span class="muted small">Missed/Skipped</span><strong>${r.status.counts.missed+r.status.counts.skipped}</strong></div>
+      <div class="stat"><span class="muted small">Green</span><strong>${r.ready.green}</strong></div>
+      <div class="stat"><span class="muted small">Yellow/Red</span><strong>${r.ready.yellow+r.ready.red}</strong></div>
+    </div>
+    <div style="height:12px"></div><button onclick="hideModal()">Done</button>`);
+}
+
+const progressionSignalsV103Base=progressionSignalsV99;
+progressionSignalsV99=function(){
+  const s=progressionSignalsV103Base();
+  const conf=recommendationConfidenceV103();
+  const weekly=weeklyCoachReviewV103();
+  s.confidence=conf.label; s.confidenceReason=conf.reason;
+  if(weekly.status.counts["Recovery Substitution"]>=2){
+    s.recommendation="HOLD";
+    s.title="Hold After Recovery Substitutions";
+    s.summary="Multiple recovery substitutions suggest the plan should stabilize before adding load.";
+    s.action="Hold current training load until recovery substitutions drop.";
+  }
+  return s;
+};
+function coachMemoryTextV103(){
+  const p=getCoachProfileV103();
+  let advice=`Goal: ${p.goal}. Coaching Style: ${p.style}.`;
+  if(p.limitations.includes("Weak Ankles")) advice+=" Protect ankles on trails and avoid reckless downhill efforts.";
+  if(p.limitations.includes("Occasional Back Issues")) advice+=" Keep strength work clean and avoid forcing reps if the back tightens.";
+  if(p.goal==="Half Marathon") advice+=" Prioritize aerobic consistency and long-run patience.";
+  if(p.goal==="Fat Loss") advice+=" Consistency, walking volume, and recovery matter more than all-out intensity.";
+  return advice;
+}
+const buildCoachNotesV103Base=buildCoachNotesV98;
+buildCoachNotesV98=function(){
+  const n=buildCoachNotesV103Base();
+  const conf=recommendationConfidenceV103();
+  n.mainRecommendation=`${n.mainRecommendation} ${coachMemoryTextV103()} Confidence: ${conf.label}.`;
+  return n;
+};
+const renderCoachMemoryCardV103Base=typeof renderCoachMemoryCardV10==="function"?renderCoachMemoryCardV10:null;
+renderCoachMemoryCardV10=function(){
+  if(renderCoachMemoryCardV103Base) renderCoachMemoryCardV103Base();
+  const card=document.getElementById("coachMemoryV10");
+  if(card && !card.innerHTML.includes("Edit Coach Memory")){
+    card.insertAdjacentHTML("beforeend",`<div style="height:10px"></div><button class="secondary" onclick="openCoachProfileV103()">Edit Coach Memory</button>`);
+  }
+};
+function renderStatusLegendV103(){
+  const today=document.getElementById("today"); if(!today) return;
+  document.getElementById("statusLegendV103")?.remove();
+  const card=document.createElement("section");
+  card.id="statusLegendV103"; card.className="card";
+  card.innerHTML=`<strong>Workout Status Types</strong><p class="muted small">RUUT now separates Completed, Modified Workout, Recovery Substitution, Planned Rest, Missed, and Skipped so the coach logic can tell the difference.</p>`;
+  today.appendChild(card);
+}
+const renderTodayV103Base=renderToday;
+renderToday=function(){renderTodayV103Base(); setTimeout(()=>{renderWeeklyReviewCardV103(); renderStatusLegendV103();},180);};
+const showScreenV103Base=showScreen;
+showScreen=function(id,btn){showScreenV103Base(id,btn); if(id==="today") setTimeout(()=>{renderWeeklyReviewCardV103(); renderStatusLegendV103();},180);};
+const renderAllV103Base=renderAll;
+renderAll=function(){renderAllV103Base(); setTimeout(()=>{renderWeeklyReviewCardV103(); renderStatusLegendV103();},180);};
+setTimeout(()=>{renderWeeklyReviewCardV103(); renderStatusLegendV103();},700);
+
 renderAll();
