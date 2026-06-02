@@ -3267,4 +3267,331 @@ renderToday = function(){
   setTimeout(renderCoachMemoryCardV10,120);
 };
 
+
+// ---------- V10.1 DAILY RESET + READINESS HISTORY + MISSED WORKOUTS ----------
+let dailyMaintenanceRunningV101 = false;
+
+function effectiveDayStampV101(date = new Date()){
+  const d = new Date(date);
+  // RUUT's training day rolls over at 12:01 AM.
+  if(d.getHours() === 0 && d.getMinutes() < 1){
+    d.setDate(d.getDate() - 1);
+  }
+  return d.toISOString().slice(0,10);
+}
+
+function calendarDateV101(date = new Date()){
+  return new Date(date).toISOString().slice(0,10);
+}
+
+function daysBetweenV101(a,b){
+  const start = new Date(a + "T12:00:00");
+  const end = new Date(b + "T12:00:00");
+  return Math.max(0, Math.round((end - start) / 86400000));
+}
+
+function ensureDailyStateV101(){
+  state.dailyStatus = state.dailyStatus || {};
+  state.missedWorkouts = state.missedWorkouts || [];
+  state.readinessHistory = state.readinessHistory || [];
+  state.workoutHistory = state.workoutHistory || [];
+  state.currentDayStamp = state.currentDayStamp || effectiveDayStampV101();
+}
+
+function workoutSnapshotV101(status, key, dayStamp){
+  let w = null;
+  try{ w = currentWorkout(); }catch(e){}
+  return {
+    date:dayStamp || effectiveDayStampV101(),
+    key:key || currentKey(),
+    week:state.week,
+    dayIndex:state.dayIndex,
+    title:w?.title || "Workout",
+    type:w?.type || "unknown",
+    status,
+    readinessStatus:state.readinessImport?.status || "Not imported",
+    createdAt:new Date().toISOString()
+  };
+}
+
+function archiveReadinessV101(reason="archive"){
+  ensureDailyStateV101();
+  if(!state.readinessImport) return;
+
+  const importDate = state.readinessImport.dayStamp || state.currentDayStamp || effectiveDayStampV101();
+  const already = state.readinessHistory.some(r =>
+    r.importedAt === state.readinessImport.importedAt &&
+    r.dayStamp === importDate
+  );
+
+  if(!already){
+    state.readinessHistory.push({
+      ...state.readinessImport,
+      dayStamp:importDate,
+      archivedReason:reason,
+      archivedAt:new Date().toISOString()
+    });
+  }
+}
+
+function markDailyStatusV101(status, key=currentKey(), dayStamp=state.currentDayStamp || effectiveDayStampV101()){
+  ensureDailyStateV101();
+
+  state.dailyStatus[dayStamp] = {
+    ...(state.dailyStatus[dayStamp] || {}),
+    key,
+    status,
+    updatedAt:new Date().toISOString()
+  };
+
+  const existingIndex = state.workoutHistory.findIndex(x => x.date === dayStamp && x.key === key);
+  const snap = workoutSnapshotV101(status, key, dayStamp);
+
+  if(existingIndex >= 0){
+    state.workoutHistory[existingIndex] = {...state.workoutHistory[existingIndex], ...snap};
+  }else{
+    state.workoutHistory.push(snap);
+  }
+}
+
+function recordMissedDayV101(dayStamp, key){
+  ensureDailyStateV101();
+
+  const day = state.dailyStatus[dayStamp];
+  if(day && day.status === "completed") return;
+  if(state.completed && state.completed.includes(key)) return;
+
+  markDailyStatusV101("missed", key, dayStamp);
+
+  const exists = state.missedWorkouts.some(x => x.date === dayStamp && x.key === key);
+  if(!exists){
+    state.missedWorkouts.push(workoutSnapshotV101("missed", key, dayStamp));
+  }
+
+  // A missed day breaks the streak.
+  state.streak = 0;
+}
+
+function advanceOneTrainingDayV101(){
+  state.dayIndex++;
+  if(state.dayIndex > 7){
+    state.dayIndex = 1;
+    state.week++;
+  }
+  if(state.week > 12){
+    state.week = 12;
+    state.dayIndex = 7;
+  }
+}
+
+function runDailyMaintenanceV101(){
+  if(dailyMaintenanceRunningV101) return;
+  dailyMaintenanceRunningV101 = true;
+
+  try{
+    ensureDailyStateV101();
+
+    const todayStamp = effectiveDayStampV101();
+    const previousStamp = state.currentDayStamp || todayStamp;
+
+    if(previousStamp !== todayStamp){
+      const elapsed = daysBetweenV101(previousStamp, todayStamp);
+
+      for(let i=0;i<elapsed;i++){
+        const loopStampDate = new Date(previousStamp + "T12:00:00");
+        loopStampDate.setDate(loopStampDate.getDate() + i);
+        const loopStamp = loopStampDate.toISOString().slice(0,10);
+        const key = currentKey();
+
+        const alreadyCompleted = state.completed && state.completed.includes(key);
+        const daily = state.dailyStatus?.[loopStamp];
+
+        if(!alreadyCompleted && (!daily || daily.status !== "completed")){
+          recordMissedDayV101(loopStamp, key);
+        }
+
+        advanceOneTrainingDayV101();
+      }
+
+      archiveReadinessV101("daily-reset");
+      delete state.readinessImport;
+
+      state.currentDayStamp = todayStamp;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+  }catch(e){
+    console.warn("RUUT daily maintenance failed", e);
+  }finally{
+    dailyMaintenanceRunningV101 = false;
+  }
+}
+
+const saveStateV101Base = saveState;
+saveState = function(){
+  ensureDailyStateV101();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  renderAll();
+};
+
+const markCompleteV101Base = markComplete;
+markComplete = function(manual=false){
+  ensureDailyStateV101();
+
+  const key = currentKey();
+  markCompleteV101Base(manual);
+
+  markDailyStatusV101("completed", key, state.currentDayStamp || effectiveDayStampV101());
+
+  // Keep storage consistent because base markComplete triggers render/save before our daily status update.
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  renderAll();
+};
+
+const nextDayV101Base = nextDay;
+nextDay = function(){
+  // Manual next day still exists, but now marks uncompleted current day as skipped rather than silently moving.
+  ensureDailyStateV101();
+  const key = currentKey();
+  const stamp = state.currentDayStamp || effectiveDayStampV101();
+  if(!(state.completed || []).includes(key)){
+    markDailyStatusV101("skipped", key, stamp);
+  }
+  archiveReadinessV101("manual-next-day");
+  delete state.readinessImport;
+  state.currentDayStamp = effectiveDayStampV101();
+  nextDayV101Base();
+};
+
+const saveReadinessImportV101Base = saveReadinessImport;
+saveReadinessImport = function(){
+  const raw = document.getElementById("readinessImportText").value || "";
+  const parsed = parseReadinessReport(raw);
+  const result = calculateReadinessFromImport(parsed);
+  const dayStamp = state.currentDayStamp || effectiveDayStampV101();
+
+  state.readinessImport = {...parsed, ...result, dayStamp};
+  archiveReadinessV101("import");
+  saveState();
+  hideModal();
+  showReadinessResult();
+};
+
+const clearReadinessImportV101Base = clearReadinessImport;
+clearReadinessImport = function(){
+  archiveReadinessV101("cleared");
+  delete state.readinessImport;
+  saveState();
+  hideModal();
+};
+
+function missedTrendV101(limit=7){
+  ensureDailyStateV101();
+  const recent = (state.workoutHistory || []).slice(-limit);
+  const missed = recent.filter(x => x.status === "missed" || x.status === "skipped").length;
+  const completed = recent.filter(x => x.status === "completed").length;
+  return {recent, missed, completed};
+}
+
+function readinessHistoryTrendV101(limit=7){
+  ensureDailyStateV101();
+  const recent = (state.readinessHistory || []).slice(-limit);
+  return {
+    recent,
+    green:recent.filter(r=>String(r.status).includes("Green")).length,
+    yellow:recent.filter(r=>String(r.status).includes("Yellow")).length,
+    red:recent.filter(r=>String(r.status).includes("Red")).length
+  };
+}
+
+// Fold missed workouts into recovery intelligence.
+const recoveryRecommendationV101Base = recoveryRecommendation;
+recoveryRecommendation = function(){
+  const base = recoveryRecommendationV101Base();
+  const m = missedTrendV101();
+
+  if(m.missed >= 2){
+    return {
+      level:"moderate",
+      title:"Consistency Reset Recommended",
+      message:"Recent missed or skipped workouts detected. RUUT will prioritize getting you back on rhythm before increasing load."
+    };
+  }
+
+  return base;
+};
+
+// Fold missed workouts and readiness history into progression signals.
+const progressionSignalsV101Base = progressionSignalsV99;
+progressionSignalsV99 = function(){
+  const s = progressionSignalsV101Base();
+  const missed = missedTrendV101();
+  const rh = readinessHistoryTrendV101();
+
+  s.missedRecent = missed.missed;
+  s.completedRecent = missed.completed;
+  s.readinessHistory = rh;
+
+  if(missed.missed >= 2){
+    s.recommendation = "HOLD";
+    s.title = "Rebuild Consistency";
+    s.summary = "Recent missed workouts show rhythm has slipped. RUUT should hold progression until consistency returns.";
+    s.action = "Do not increase load. Complete the next two scheduled workouts before progressing.";
+    s.confidence = "High";
+  }
+
+  if(rh.red >= 2){
+    s.recommendation = "REDUCE";
+    s.title = "Recovery Trend Warning";
+    s.summary = "Readiness history shows repeated Red days. RUUT should reduce load and prioritize recovery.";
+    s.action = "Reduce next comparable workout by 10–15% or choose Recovery Mode.";
+    s.confidence = "High";
+  }
+
+  return s;
+};
+
+function dailySystemCardV101(){
+  ensureDailyStateV101();
+  const today = state.currentDayStamp || effectiveDayStampV101();
+  const daily = state.dailyStatus?.[today];
+  const status = daily?.status || "awaiting workout";
+  const readiness = state.readinessImport ? state.readinessImport.status : "Awaiting today's readiness import";
+  const m = missedTrendV101();
+
+  return `<section class="card hero" id="dailySystemV101" style="border-left:4px solid var(--accent2)">
+    <div class="pill-row"><span class="pill accent">Daily System</span><span class="pill">${today}</span></div>
+    <h3>${status === "completed" ? "Workout Completed" : "Ready for Today"}</h3>
+    <p class="muted">Readiness: ${readiness}</p>
+    <p class="muted">Recent: ${m.completed} completed / ${m.missed} missed or skipped</p>
+    <p class="muted small">RUUT resets at 12:01 AM. If today's workout is not completed by then, it is logged as missed and the plan advances.</p>
+  </section>`;
+}
+
+const renderTodayV101Base = renderToday;
+renderToday = function(){
+  runDailyMaintenanceV101();
+  renderTodayV101Base();
+
+  const today = document.getElementById("today");
+  if(today && !document.getElementById("dailySystemV101")){
+    today.insertAdjacentHTML("afterbegin", dailySystemCardV101());
+  }
+};
+
+const renderAllV101Base = renderAll;
+renderAll = function(){
+  runDailyMaintenanceV101();
+  renderAllV101Base();
+};
+
+const showScreenV101Base = showScreen;
+showScreen = function(id,btn){
+  runDailyMaintenanceV101();
+  showScreenV101Base(id,btn);
+};
+
+// Run at startup and then check every minute while app is open.
+runDailyMaintenanceV101();
+setInterval(runDailyMaintenanceV101, 60000);
+
 renderAll();
