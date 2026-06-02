@@ -3594,4 +3594,253 @@ showScreen = function(id,btn){
 runDailyMaintenanceV101();
 setInterval(runDailyMaintenanceV101, 60000);
 
+
+// ---------- V10.2 DYNAMIC PLAN MODIFICATION ----------
+function dynamicPlanDecisionV102(){
+  const prog = typeof progressionSignalsV99 === "function" ? progressionSignalsV99() : {recommendation:"HOLD", title:"Hold", summary:"No progression signal."};
+  const readiness = typeof readinessLevelV96 === "function" ? readinessLevelV96() : "none";
+  const missed = typeof missedTrendV101 === "function" ? missedTrendV101() : {missed:0, completed:0};
+  const debrief = typeof debriefTrendV97 === "function" ? debriefTrendV97() : {heavyLegs:0, veryHard:0, pain:0};
+
+  let decision = {
+    mode:"HOLD",
+    title:"Keep Original Plan",
+    reason:"Training signals do not justify rewriting today’s plan.",
+    amount:0
+  };
+
+  if(readiness === "red" || debrief.pain >= 1){
+    decision = {
+      mode:"RECOVERY",
+      title:"Replace With Recovery",
+      reason:"Readiness or recent pain suggests hard training is not the right call today.",
+      amount:-1
+    };
+  }else if(prog.recommendation === "REDUCE" || missed.missed >= 2 || debrief.heavyLegs >= 2 || debrief.veryHard >= 2){
+    decision = {
+      mode:"REDUCE",
+      title:"Reduce Today’s Plan",
+      reason:"Recent fatigue, missed workouts, or debrief trends suggest a conservative adjustment.",
+      amount:-0.10
+    };
+  }else if(prog.recommendation === "PROGRESS" && readiness === "green" && missed.missed === 0){
+    decision = {
+      mode:"PROGRESS",
+      title:"Progress Today’s Plan",
+      reason:"Readiness and recent debriefs suggest you may be ready for a small controlled increase.",
+      amount:0.10
+    };
+  }
+
+  return {decision, prog, readiness, missed, debrief};
+}
+
+function dynamicPlanKeyV102(){
+  return `${state.currentDayStamp || (typeof effectiveDayStampV101 === "function" ? effectiveDayStampV101() : new Date().toISOString().slice(0,10))}-${currentKey()}`;
+}
+
+function getApprovedPlanV102(){
+  state.dynamicPlanApprovals = state.dynamicPlanApprovals || {};
+  return state.dynamicPlanApprovals[dynamicPlanKeyV102()] || null;
+}
+
+function setApprovedPlanV102(decision){
+  state.dynamicPlanApprovals = state.dynamicPlanApprovals || {};
+  state.dynamicPlanApprovals[dynamicPlanKeyV102()] = {
+    ...decision,
+    approved:true,
+    approvedAt:new Date().toISOString()
+  };
+  saveState();
+}
+
+function clearApprovedPlanV102(){
+  state.dynamicPlanApprovals = state.dynamicPlanApprovals || {};
+  delete state.dynamicPlanApprovals[dynamicPlanKeyV102()];
+  saveState();
+}
+
+function cloneForDynamicV102(x){
+  try{return structuredClone(x)}catch(e){return JSON.parse(JSON.stringify(x))}
+}
+
+function applyDynamicPlanToWorkoutV102(workout, decision){
+  const w = cloneForDynamicV102(workout);
+  if(!decision || decision.mode === "HOLD") return w;
+
+  w.dynamicPlanApplied = true;
+  w.dynamicPlanMode = decision.mode;
+  w.dynamicPlanReason = decision.reason;
+  w.originalTitle = w.originalTitle || w.title;
+  w.originalTime = w.originalTime || w.time;
+  w.originalStructure = w.originalStructure || w.structure;
+
+  if(decision.mode === "RECOVERY"){
+    return {
+      ...w,
+      type:"rest",
+      title:"Dynamic Recovery Day",
+      time:"20–30 min",
+      structure:"Easy walk, mobility, or flexibility. No hard intervals today.",
+      distance:"Easy movement only",
+      purpose:"Protect recovery while keeping the training habit alive.",
+      terrain:"Flat, easy route or recovery/flexibility work.",
+      effort:"Very easy. Finish feeling better.",
+      success:"You moved, recovered, and did not force intensity.",
+      caution:"Do not turn recovery into a hidden workout."
+    };
+  }
+
+  if(w.type === "run"){
+    const baseTotal = Number(w.total || 20);
+    const factor = decision.mode === "PROGRESS" ? 1.10 : 0.90;
+    const newTotal = Math.max(10, Math.round(baseTotal * factor));
+    w.total = newTotal;
+    w.time = `${newTotal} min`;
+    w.title = `${decision.mode === "PROGRESS" ? "Progressed" : "Reduced"} ${w.originalTitle || w.title}`;
+    w.structure = `${w.originalStructure || w.structure}. Dynamic plan: ${decision.mode === "PROGRESS" ? "increase" : "reduce"} total volume about 10%.`;
+    w.effort = decision.mode === "PROGRESS" ? "Controlled push. Do not sprint." : "Conservative. Finish steady.";
+    w.success = decision.mode === "PROGRESS" ? "Handle the added work without form falling apart." : "Complete the reduced workout feeling stable.";
+  }
+
+  if(w.type === "bodyweight"){
+    if(decision.mode === "PROGRESS"){
+      w.rounds = Math.min((w.rounds || 2) + 1, 6);
+      w.title = "Progressed Bodyweight Strength";
+      w.structure = `${w.rounds} rounds today. Dynamic plan: one additional round if form stays clean.`;
+    }else{
+      w.rounds = Math.max(1,(w.rounds || 2)-1);
+      w.title = "Reduced Bodyweight Strength";
+      w.structure = `${w.rounds} rounds today. Dynamic plan: one less round to protect recovery.`;
+    }
+    w.time = `${w.rounds} rounds`;
+  }
+
+  return w;
+}
+
+const currentWorkoutV102Base = currentWorkout;
+currentWorkout = function(){
+  const base = currentWorkoutV102Base();
+  const approved = getApprovedPlanV102();
+  return approved ? applyDynamicPlanToWorkoutV102(base, approved) : base;
+};
+
+function dynamicPlanPreviewV102(){
+  const signal = dynamicPlanDecisionV102();
+  const base = currentWorkoutV102Base();
+  const approved = getApprovedPlanV102();
+  const activeDecision = approved || signal.decision;
+  const proposed = applyDynamicPlanToWorkoutV102(base, activeDecision);
+  return {...signal, approved, activeDecision, base, proposed};
+}
+
+function renderDynamicPlanCardV102(){
+  const today = document.getElementById("today");
+  if(!today) return;
+
+  const old = document.getElementById("dynamicPlanV102");
+  if(old) old.remove();
+
+  const p = dynamicPlanPreviewV102();
+  const d = p.activeDecision;
+  const color = d.mode === "PROGRESS" ? "var(--accent)" : d.mode === "REDUCE" || d.mode === "RECOVERY" ? "var(--danger)" : "var(--gold)";
+  const status = p.approved ? "Applied" : "Suggested";
+
+  const card = document.createElement("section");
+  card.id = "dynamicPlanV102";
+  card.className = "card hero";
+  card.style.borderLeft = `4px solid ${color}`;
+  card.innerHTML = `
+    <div class="pill-row">
+      <span class="pill accent">Dynamic Plan</span>
+      <span class="pill">${d.mode}</span>
+      <span class="pill">${status}</span>
+    </div>
+    <h3>${d.title}</h3>
+    <p class="muted">${d.reason}</p>
+    <div class="grid two">
+      <div class="detail"><strong>Original</strong><p class="muted">${p.base.title}<br>${p.base.time || ""}</p></div>
+      <div class="detail"><strong>RUUT Plan</strong><p class="muted">${p.proposed.title}<br>${p.proposed.time || ""}</p></div>
+    </div>
+    <div style="height:10px"></div>
+    ${d.mode === "HOLD" ? `<button class="secondary" onclick="showDynamicPlanDetailV102()">View Reasoning</button>` :
+      p.approved ? `<button class="secondary" onclick="clearDynamicPlanV102()">Use Original Plan</button><div style="height:8px"></div><button class="secondary" onclick="showDynamicPlanDetailV102()">View Reasoning</button>` :
+      `<button onclick="approveDynamicPlanV102()">Apply RUUT Plan</button><div style="height:8px"></div><button class="secondary" onclick="showDynamicPlanDetailV102()">View Reasoning</button>`}
+  `;
+
+  const progression = document.getElementById("progressionCardV99");
+  if(progression && progression.nextSibling){
+    progression.parentNode.insertBefore(card, progression.nextSibling);
+  }else{
+    today.insertAdjacentElement("afterbegin", card);
+  }
+}
+
+function approveDynamicPlanV102(){
+  const d = dynamicPlanDecisionV102().decision;
+  setApprovedPlanV102(d);
+  showModal(`<h2>RUUT Plan Applied</h2>
+    <p class="muted">${d.title}</p>
+    <div class="detail"><strong>Reason</strong><p class="muted">${d.reason}</p></div>
+    <div style="height:12px"></div>
+    <button onclick="hideModal();renderAll()">Done</button>`);
+}
+
+function clearDynamicPlanV102(){
+  clearApprovedPlanV102();
+  showModal(`<h2>Original Plan Restored</h2>
+    <p class="muted">RUUT will use the original scheduled workout for today.</p>
+    <div style="height:12px"></div>
+    <button onclick="hideModal();renderAll()">Done</button>`);
+}
+
+function showDynamicPlanDetailV102(){
+  const p = dynamicPlanPreviewV102();
+  const d = p.activeDecision;
+
+  showModal(`<h2>Dynamic Plan Detail</h2>
+    <div class="detail"><strong>Status</strong><p class="muted">${p.approved ? "Applied" : "Suggested"} — ${d.mode}</p></div>
+    <div style="height:10px"></div>
+    <div class="detail"><strong>Original Plan</strong><p class="muted">${p.base.title}<br>${p.base.time || ""}<br>${p.base.structure || ""}</p></div>
+    <div style="height:10px"></div>
+    <div class="detail"><strong>RUUT Plan</strong><p class="muted">${p.proposed.title}<br>${p.proposed.time || ""}<br>${p.proposed.structure || ""}</p></div>
+    <div style="height:10px"></div>
+    <div class="detail"><strong>Reason</strong><p class="muted">${d.reason}</p></div>
+    <div style="height:10px"></div>
+    <div class="detail"><strong>Signals</strong>
+      <p class="muted">
+        Progression: ${p.prog?.recommendation || "—"}<br>
+        Readiness: ${p.readiness}<br>
+        Recent missed: ${p.missed?.missed ?? 0}<br>
+        Heavy legs: ${p.debrief?.heavyLegs ?? 0}<br>
+        Very hard: ${p.debrief?.veryHard ?? 0}<br>
+        Pain: ${p.debrief?.pain ?? 0}
+      </p>
+    </div>
+    <div style="height:12px"></div>
+    ${d.mode !== "HOLD" && !p.approved ? `<button onclick="hideModal();approveDynamicPlanV102()">Apply RUUT Plan</button><div style="height:8px"></div>` : ""}
+    <button class="secondary" onclick="hideModal()">Done</button>`);
+}
+
+const renderTodayV102Base = renderToday;
+renderToday = function(){
+  renderTodayV102Base();
+  setTimeout(renderDynamicPlanCardV102, 140);
+};
+
+const showScreenV102Base = showScreen;
+showScreen = function(id,btn){
+  showScreenV102Base(id,btn);
+  if(id==="today") setTimeout(renderDynamicPlanCardV102, 140);
+};
+
+const renderAllV102Base = renderAll;
+renderAll = function(){
+  renderAllV102Base();
+  setTimeout(renderDynamicPlanCardV102, 140);
+};
+
+setTimeout(renderDynamicPlanCardV102, 500);
+
 renderAll();
