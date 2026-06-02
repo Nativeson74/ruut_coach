@@ -4025,4 +4025,198 @@ const renderAllV103Base=renderAll;
 renderAll=function(){renderAllV103Base(); setTimeout(()=>{renderWeeklyReviewCardV103(); renderStatusLegendV103();},180);};
 setTimeout(()=>{renderWeeklyReviewCardV103(); renderStatusLegendV103();},700);
 
+
+// ---------- V10.4 REMOVE APPLE HEALTH READINESS IMPORT ----------
+function removeReadinessUIV104(){
+  document.querySelectorAll("#readinessCardV951, [data-ruut-readiness-card='true']").forEach(el=>el.remove());
+
+  const today = document.getElementById("today");
+  if(today){
+    Array.from(today.querySelectorAll("section.card.hero")).forEach(section=>{
+      const t = (section.innerText || "").trim();
+      if(
+        t.includes("No Readiness Imported") ||
+        t.includes("Paste Readiness Report") ||
+        t.includes("View Readiness") ||
+        t.startsWith("Readiness")
+      ){
+        section.remove();
+      }
+    });
+  }
+}
+
+openReadinessImport = function(){
+  showModal(`<h2>Readiness Import Removed</h2>
+    <p class="muted">RUUT no longer uses pasted Apple Health readiness reports because the Shortcut data was not accurate enough.</p>
+    <p class="muted">Training decisions now rely on workout completion, missed days, workout debriefs, recovery substitutions, and coach memory.</p>
+    <button onclick="hideModal()">Done</button>`);
+};
+
+showReadinessResult = openReadinessImport;
+
+clearReadinessImport = function(){
+  delete state.readinessImport;
+  saveState();
+  hideModal();
+};
+
+delete state.readinessImport;
+localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+
+function readinessLevelV96(){
+  return "none";
+}
+
+function coachReadinessSummaryV98(){
+  return {
+    status:"Not used",
+    line:"Apple Health readiness import is disabled. RUUT is using your workout history, debriefs, missed days, and coach memory instead.",
+    tone:"neutral"
+  };
+}
+
+function buildReadinessCoachNoteV953(){
+  return "Readiness import is disabled. RUUT now adapts from your real training behavior and post-workout feedback.";
+}
+
+function calculateReadinessFromImport(){
+  return {
+    status:"Not used",
+    flags:[],
+    notes:["Readiness import disabled."],
+    recommendation:"Use workout debriefs and training history."
+  };
+}
+
+startWorkout = function(){
+  workoutAbort=false;
+  skipCurrentTimer=false;
+  workoutPaused=false;
+  beginWorkout("normal");
+};
+
+progressionSignalsV99 = function(){
+  const deb = (state.workoutDebriefs || []).slice(-7);
+  const missedData = typeof missedTrendV101 === "function" ? missedTrendV101() : {missed:0,completed:0};
+  const statusData = typeof statusCountsV103 === "function" ? statusCountsV103(7) : {counts:{}};
+  const conf = typeof recommendationConfidenceV103 === "function"
+    ? recommendationConfidenceV103()
+    : {label:"Low",reason:"RUUT is still learning."};
+
+  let easy=0, moderate=0, hard=0, veryHard=0, issues=0, pain=0, heavyLegs=0, lowEnergy=0, breathing=0;
+
+  deb.forEach(d=>{
+    if(d.feel==="Easy") easy++;
+    if(d.feel==="Moderate") moderate++;
+    if(d.feel==="Hard") hard++;
+    if(d.feel==="Very Hard") veryHard++;
+    if(d.issue && d.issue!=="None" && d.issue!=="Not recorded") issues++;
+    if(d.issue==="Pain") pain++;
+    if(d.issue==="Heavy Legs") heavyLegs++;
+    if(d.issue==="Low Energy") lowEnergy++;
+    if(d.issue==="Breathing") breathing++;
+  });
+
+  let recommendation = "HOLD";
+  let title = "Hold Current Load";
+  let summary = "RUUT is using debriefs, missed workouts, recovery substitutions, and completion history. Current signals do not justify increasing load yet.";
+  let action = "Keep this week as written.";
+
+  const recoverySubs = statusData.counts?.["Recovery Substitution"] || 0;
+  const missed = (missedData.missed || 0) + (statusData.counts?.skipped || 0);
+
+  if(pain >= 1 || recoverySubs >= 2 || veryHard >= 2 || heavyLegs >= 2){
+    recommendation = "REDUCE";
+    title = "Reduce Training Load";
+    summary = "Recent debriefs or recovery substitutions show fatigue risk. RUUT should reduce load before adding more stress.";
+    action = "Reduce the next comparable workout by 10–15%, or choose Recovery Mode if symptoms persist.";
+  }else if(missed >= 2){
+    recommendation = "HOLD";
+    title = "Rebuild Consistency";
+    summary = "Recent missed or skipped workouts show rhythm has slipped. RUUT should rebuild consistency before progressing.";
+    action = "Complete the next two scheduled workouts before increasing load.";
+  }else if(deb.length >= 3 && easy >= 2 && issues === 0 && missed === 0){
+    recommendation = "PROGRESS";
+    title = "Progression Available";
+    summary = "Recent workouts are trending manageable with no reported issues. RUUT can consider a small controlled progression.";
+    action = "Increase the next comparable workout slightly: about 5–10% volume, or finish the final interval with controlled effort.";
+  }else if(hard >= 2 || lowEnergy >= 1 || breathing >= 2){
+    recommendation = "HOLD";
+    title = "Hold and Stabilize";
+    summary = "Training is productive but not ready for an increase. Hold the current level and avoid bonus work.";
+    action = "Complete the plan as written with clean form and controlled effort.";
+  }
+
+  return {
+    deb,
+    easy, moderate, hard, veryHard, issues, pain, heavyLegs, lowEnergy, breathing,
+    missedRecent:missedData.missed || 0,
+    completedRecent:missedData.completed || 0,
+    readiness:"Disabled",
+    recommendation,
+    title,
+    summary,
+    action,
+    confidence:conf.label,
+    confidenceReason:conf.reason
+  };
+};
+
+function coachDataModeCardV104(){
+  return `<section class="card hero" id="coachDataModeV104" style="border-left:4px solid var(--accent2)">
+    <div class="pill-row"><span class="pill accent">Coach Data Mode</span><span class="pill">Training History</span></div>
+    <h3>Readiness Import Disabled</h3>
+    <p class="muted">RUUT is no longer using pasted Apple Health readiness reports.</p>
+    <p class="muted small">Current intelligence uses completed workouts, missed days, debriefs, recovery substitutions, dynamic plan choices, and coach memory.</p>
+  </section>`;
+}
+
+const dailySystemCardV104Base = typeof dailySystemCardV101 === "function" ? dailySystemCardV101 : null;
+dailySystemCardV101 = function(){
+  const today = state.currentDayStamp || (typeof effectiveDayStampV101==="function" ? effectiveDayStampV101() : new Date().toISOString().slice(0,10));
+  const daily = state.dailyStatus?.[today];
+  const status = daily?.status || "awaiting workout";
+  const m = typeof missedTrendV101 === "function" ? missedTrendV101() : {completed:0,missed:0};
+
+  return `<section class="card hero" id="dailySystemV101" style="border-left:4px solid var(--accent2)">
+    <div class="pill-row"><span class="pill accent">Daily System</span><span class="pill">${today}</span></div>
+    <h3>${status === "completed" || status === "Completed" || status === "Modified Workout" ? "Workout Logged" : "Ready for Today"}</h3>
+    <p class="muted">Status: ${status}</p>
+    <p class="muted">Recent: ${m.completed || 0} completed / ${m.missed || 0} missed or skipped</p>
+    <p class="muted small">RUUT resets at 12:01 AM. If today's workout is not completed by then, it is logged as missed and the plan advances.</p>
+  </section>`;
+};
+
+const renderTodayV104Base = renderToday;
+renderToday = function(){
+  renderTodayV104Base();
+  setTimeout(()=>{
+    removeReadinessUIV104();
+    const today = document.getElementById("today");
+    if(today && !document.getElementById("coachDataModeV104")){
+      const daily = document.getElementById("dailySystemV101");
+      if(daily && daily.nextSibling){
+        daily.insertAdjacentHTML("afterend", coachDataModeCardV104());
+      }else{
+        today.insertAdjacentHTML("afterbegin", coachDataModeCardV104());
+      }
+    }
+  },250);
+};
+
+const showScreenV104Base = showScreen;
+showScreen = function(id,btn){
+  showScreenV104Base(id,btn);
+  setTimeout(removeReadinessUIV104,250);
+};
+
+const renderAllV104Base = renderAll;
+renderAll = function(){
+  renderAllV104Base();
+  setTimeout(removeReadinessUIV104,250);
+};
+
+setTimeout(removeReadinessUIV104,500);
+
 renderAll();
