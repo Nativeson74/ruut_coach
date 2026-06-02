@@ -4219,4 +4219,229 @@ renderAll = function(){
 
 setTimeout(removeReadinessUIV104,500);
 
+
+// ---------- V10.5 VOICE COACH AUDIO PACK ----------
+const RUUT_AUDIO_BASE_V105 = "./audio/coach/";
+const RUUT_AUDIO_FILES_V105 = {
+  workout_start:"workout_start.m4a",
+  warmup_start:"warmup_start.m4a",
+  run_start:"run_start.m4a",
+  walk_recovery:"walk_recovery.m4a",
+  interval_start:"interval_start.m4a",
+  halfway:"halfway.m4a",
+  one_minute_left:"one_minute_left.m4a",
+  cooldown_start:"cooldown_start.m4a",
+  workout_complete:"workout_complete.m4a",
+  easy_day:"easy_day.m4a",
+  progression_day:"progression_day.m4a",
+  reduced_day:"reduced_day.m4a",
+  recovery_substitution:"recovery_substitution.m4a",
+  missed_workout:"missed_workout.m4a",
+  weekly_review_good:"weekly_review_good.m4a",
+  weekly_review_neutral:"weekly_review_neutral.m4a",
+  weekly_review_warning:"weekly_review_warning.m4a",
+  great_job:"great_job.m4a",
+  rest_day:"rest_day.m4a",
+  coach_message:"coach_message.m4a"
+};
+
+state.voiceCoach = state.voiceCoach || {enabled:true,fallbackSpeech:true,lastUnlocked:false};
+let currentCoachAudioV105 = null;
+
+function audioUrlV105(key){
+  const file = RUUT_AUDIO_FILES_V105[key];
+  return file ? RUUT_AUDIO_BASE_V105 + file : null;
+}
+
+function stopCoachAudioV105(){
+  try{
+    if(currentCoachAudioV105){
+      currentCoachAudioV105.pause();
+      currentCoachAudioV105.currentTime = 0;
+    }
+  }catch(e){}
+}
+
+function playCoachAudioV105(key, fallbackText=""){
+  return new Promise(resolve=>{
+    if(!state.voiceCoach) state.voiceCoach = {enabled:true,fallbackSpeech:true,lastUnlocked:false};
+    if(!state.voiceCoach.enabled){
+      if(state.voiceCoach.fallbackSpeech && fallbackText) speak(fallbackText);
+      resolve(false);
+      return;
+    }
+    const url = audioUrlV105(key);
+    if(!url){
+      if(state.voiceCoach.fallbackSpeech && fallbackText) speak(fallbackText);
+      resolve(false);
+      return;
+    }
+    stopCoachAudioV105();
+    const audio = new Audio(url);
+    currentCoachAudioV105 = audio;
+    audio.preload = "auto";
+    let settled = false;
+    const done = ok => { if(settled) return; settled = true; resolve(ok); };
+    audio.onended = () => done(true);
+    audio.onerror = () => {
+      if(state.voiceCoach.fallbackSpeech && fallbackText) speak(fallbackText);
+      done(false);
+    };
+    const p = audio.play();
+    if(p && typeof p.catch === "function"){
+      p.catch(()=>{
+        if(state.voiceCoach.fallbackSpeech && fallbackText) speak(fallbackText);
+        done(false);
+      });
+    }
+  });
+}
+
+async function coachCueV105(key, fallbackText=""){
+  return playCoachAudioV105(key, fallbackText);
+}
+
+function unlockVoiceCoachV105(){
+  const url = audioUrlV105("coach_message") || audioUrlV105("workout_start");
+  if(!url) return;
+  const audio = new Audio(url);
+  audio.volume = 0.01;
+  audio.play().then(()=>{
+    audio.pause();
+    audio.currentTime = 0;
+    state.voiceCoach.lastUnlocked = true;
+    saveState();
+  }).catch(()=>{});
+}
+
+function openVoiceSettingsV105(){
+  const vc = state.voiceCoach || {enabled:true,fallbackSpeech:true};
+  showModal(`<h2>Voice Coach</h2>
+    <p class="muted">Use your recorded voice files for workout coaching.</p>
+    <label><input type="checkbox" id="voiceCoachEnabledV105" ${vc.enabled ? "checked" : ""}> Use recorded voice files</label><br>
+    <label><input type="checkbox" id="voiceFallbackV105" ${vc.fallbackSpeech ? "checked" : ""}> Fall back to phone voice if a file is missing</label>
+    <div style="height:12px"></div>
+    <button onclick="saveVoiceSettingsV105()">Save Voice Settings</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="testVoiceCoachV105()">Test Recorded Voice</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="hideModal()">Cancel</button>`);
+}
+
+function saveVoiceSettingsV105(){
+  state.voiceCoach = state.voiceCoach || {};
+  state.voiceCoach.enabled = !!document.getElementById("voiceCoachEnabledV105")?.checked;
+  state.voiceCoach.fallbackSpeech = !!document.getElementById("voiceFallbackV105")?.checked;
+  saveState();
+  hideModal();
+}
+
+function testVoiceCoachV105(){
+  unlockVoiceCoachV105();
+  coachCueV105("coach_message","Remember, the goal is consistency.");
+}
+
+const openSettingsV105Base = openSettings;
+openSettings = function(){
+  openSettingsV105Base();
+  setTimeout(()=>{
+    const modal = document.getElementById("modalContent");
+    if(modal && !modal.innerHTML.includes("Voice Coach")){
+      modal.insertAdjacentHTML("beforeend",`
+        <div style="height:12px"></div>
+        <button class="secondary" onclick="openVoiceSettingsV105()">Voice Coach</button>
+      `);
+    }
+  },50);
+};
+
+const beginWorkoutV105Base = beginWorkout;
+beginWorkout = async function(readiness){
+  unlockVoiceCoachV105();
+  await coachCueV105("workout_start","It is time to train.");
+  const x = currentWorkout();
+  if(x?.dynamicPlanMode === "PROGRESS" || /Progressed/i.test(x?.title || "")){
+    await coachCueV105("progression_day","Today's workout has been adjusted upward.");
+  }else if(x?.dynamicPlanMode === "REDUCE" || /Reduced/i.test(x?.title || "")){
+    await coachCueV105("reduced_day","Today's workout has been adjusted to support recovery.");
+  }else if(x?.type === "rest"){
+    await coachCueV105("recovery_substitution","Recovery comes first today.");
+  }
+  return beginWorkoutV105Base(readiness);
+};
+
+const warmupV105Base = warmup;
+warmup = async function(){
+  await coachCueV105("warmup_start","Begin your warmup.");
+  return warmupV105Base();
+};
+
+const cooldownV105Base = cooldown;
+cooldown = async function(){
+  await coachCueV105("cooldown_start","Begin your cooldown.");
+  return cooldownV105Base();
+};
+
+if(typeof runSegmentV91 === "function"){
+  const runSegmentV91V105Base = runSegmentV91;
+  runSegmentV91 = async function(label,seconds,remaining,total){
+    await coachCueV105(label==="Run" ? "run_start" : "walk_recovery", label==="Run" ? "Run now." : "Walk now.");
+    return runSegmentV91V105Base(label,seconds,remaining,total);
+  };
+}
+
+if(typeof runSegment === "function"){
+  const runSegmentV105Base = runSegment;
+  runSegment = async function(label,seconds,remaining,total){
+    await coachCueV105(label==="Run" ? "run_start" : "walk_recovery", label==="Run" ? "Run now." : "Walk now.");
+    return runSegmentV105Base(label,seconds,remaining,total);
+  };
+}
+
+const showHalfwayV105Base = showHalfway;
+showHalfway = function(){
+  coachCueV105("halfway","You are halfway there.");
+  return showHalfwayV105Base();
+};
+
+const finishWorkoutV105Base = finishWorkout;
+finishWorkout = async function(){
+  await coachCueV105("workout_complete","Workout complete.");
+  return finishWorkoutV105Base();
+};
+
+const startRestV105Base = startRest;
+startRest = function(x){
+  coachCueV105("rest_day","Today is a rest day.");
+  return startRestV105Base(x);
+};
+
+function renderVoiceCoachCardV105(){
+  const today = document.getElementById("today");
+  if(!today) return;
+  document.getElementById("voiceCoachV105")?.remove();
+  const enabled = state.voiceCoach?.enabled !== false;
+  const card = document.createElement("section");
+  card.id = "voiceCoachV105";
+  card.className = "card";
+  card.innerHTML = `<strong>Voice Coach</strong>
+    <p class="muted small">${enabled ? "Recorded voice files enabled." : "Recorded voice files disabled."}</p>
+    <button class="secondary" onclick="openVoiceSettingsV105()">Voice Settings</button>`;
+  today.appendChild(card);
+}
+
+const renderTodayV105Base = renderToday;
+renderToday = function(){
+  renderTodayV105Base();
+  setTimeout(renderVoiceCoachCardV105,220);
+};
+
+const showScreenV105Base = showScreen;
+showScreen = function(id,btn){
+  showScreenV105Base(id,btn);
+  if(id==="today") setTimeout(renderVoiceCoachCardV105,220);
+};
+
+setTimeout(renderVoiceCoachCardV105,800);
+
 renderAll();
