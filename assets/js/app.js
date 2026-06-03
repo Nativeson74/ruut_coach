@@ -4800,4 +4800,186 @@ const ruutTodayLockTimerV1101 = setInterval(()=>{
   if(ruutTodayLockTicksV1101 > 30) clearInterval(ruutTodayLockTimerV1101);
 },100);
 
+
+// ---------- V11.1 COACH TAB ----------
+function ensureCoachScreenV111(){
+  let coach = document.getElementById("coach");
+  if(!coach){
+    coach = document.createElement("main");
+    coach.id = "coach";
+    coach.className = "screen";
+    const journal = document.getElementById("journal");
+    if(journal){
+      journal.parentNode.insertBefore(coach, journal);
+    }else{
+      document.querySelector(".app")?.insertBefore(coach, document.querySelector("nav"));
+    }
+  }
+
+  const nav = document.querySelector("nav");
+  if(nav && !document.getElementById("coachNavV111")){
+    const btn = document.createElement("button");
+    btn.id = "coachNavV111";
+    btn.textContent = "Coach";
+    btn.onclick = function(){ showScreen("coach", this); };
+
+    const statsBtn = Array.from(nav.querySelectorAll("button")).find(b => /Stats/i.test(b.textContent));
+    if(statsBtn && statsBtn.nextSibling){
+      nav.insertBefore(btn, statsBtn.nextSibling);
+    }else{
+      nav.appendChild(btn);
+    }
+  }
+}
+
+function coachTabProfileCardV111(){
+  const p = typeof getCoachProfileV103 === "function" ? getCoachProfileV103() : (state.coachProfile || {goal:"Fat Loss",style:"Balanced",limitations:[]});
+  return `<section class="card hero">
+    <div class="pill-row"><span class="pill accent">Coach Memory</span></div>
+    <h3>${p.goal || "Goal"}</h3>
+    <p class="muted">Style: ${p.style || "Balanced"}</p>
+    <p class="muted">Limitations: ${(p.limitations || []).join(", ") || "None listed"}</p>
+    <button class="secondary" onclick="openCoachProfileV103 ? openCoachProfileV103() : openSettings()">Edit Coach Memory</button>
+  </section>`;
+}
+
+function coachTabVoiceCardV111(){
+  const enabled = state.voiceCoach?.enabled !== false;
+  return `<section class="card hero">
+    <div class="pill-row"><span class="pill accent">Voice Coach</span><span class="pill">${enabled ? "Enabled" : "Disabled"}</span></div>
+    <h3>Recorded Voice Files</h3>
+    <p class="muted">Use your recorded voice prompts during workouts.</p>
+    <div class="grid two">
+      <button class="secondary" onclick="openVoiceSettingsV105()">Voice Settings</button>
+      <button class="secondary" onclick="testVoiceCoachV105()">Test Voice</button>
+    </div>
+  </section>`;
+}
+
+function coachTabWeeklyCardV111(){
+  let assessment = "Weekly review is still building.";
+  let confidence = "Low";
+  let completed = 0, missed = 0, recovery = 0;
+
+  try{
+    const r = weeklyCoachReviewV103();
+    const c = recommendationConfidenceV103();
+    assessment = r.assessment || assessment;
+    confidence = c.label || confidence;
+    completed = (r.status.counts.Completed || 0) + (r.status.counts["Modified Workout"] || 0);
+    missed = (r.status.counts.missed || 0) + (r.status.counts.skipped || 0);
+    recovery = r.status.counts["Recovery Substitution"] || 0;
+  }catch(e){}
+
+  return `<section class="card hero">
+    <div class="pill-row"><span class="pill accent">Weekly Review</span><span class="pill">Confidence: ${confidence}</span></div>
+    <h3>Coach Assessment</h3>
+    <p class="muted">${assessment}</p>
+    <div class="grid three">
+      <div class="stat"><span class="muted small">Done</span><strong>${completed}</strong></div>
+      <div class="stat"><span class="muted small">Missed</span><strong>${missed}</strong></div>
+      <div class="stat"><span class="muted small">Recovery</span><strong>${recovery}</strong></div>
+    </div>
+    <button class="secondary" onclick="showWeeklyReviewDetailV103()">View Full Review</button>
+  </section>`;
+}
+
+function coachTabDynamicPlanCardV111(){
+  let html = `<p class="muted">Dynamic Plan details are not available yet.</p>`;
+  try{
+    const p = dynamicPlanPreviewV102();
+    html = `<div class="pill-row"><span class="pill">${p.activeDecision.mode}</span><span class="pill">${p.approved ? "Applied" : "Suggested"}</span></div>
+      <h3>${p.activeDecision.title}</h3>
+      <p class="muted">${p.activeDecision.reason}</p>
+      <div class="grid two">
+        <div class="detail"><strong>Original</strong><p class="muted">${p.base.title}<br>${p.base.time || ""}</p></div>
+        <div class="detail"><strong>RUUT Plan</strong><p class="muted">${p.proposed.title}<br>${p.proposed.time || ""}</p></div>
+      </div>`;
+  }catch(e){}
+
+  return `<section class="card hero">
+    <div class="pill-row"><span class="pill accent">Dynamic Plan</span></div>
+    ${html}
+    <button class="secondary" onclick="showDynamicPlanDetailV102()">View Dynamic Plan</button>
+  </section>`;
+}
+
+function coachTabProgressionCardV111(){
+  let s = {title:"Hold Current Load",summary:"Progression data is still building.",recommendation:"HOLD",confidence:"Low"};
+  try{s = progressionSignalsV99();}catch(e){}
+
+  return `<section class="card hero">
+    <div class="pill-row"><span class="pill accent">Adaptive Progression</span><span class="pill">${s.recommendation}</span><span class="pill">Confidence: ${s.confidence || "Low"}</span></div>
+    <h3>${s.title}</h3>
+    <p class="muted">${s.summary}</p>
+    <div class="detail"><strong>Action</strong><p class="muted">${s.action || "Keep training."}</p></div>
+    <button class="secondary" onclick="showProgressionDetailV99()">View Progression Detail</button>
+  </section>`;
+}
+
+function coachTabRecoveryCardV111(){
+  let rec = {title:"Recovery trend building",message:"Save workout debriefs so RUUT can recognize fatigue patterns.",level:"good"};
+  try{rec = recoveryRecommendation();}catch(e){}
+
+  let trend = {recent:[],issues:0,veryHard:0,heavyLegs:0};
+  try{trend = debriefTrendV97();}catch(e){}
+
+  return `<section class="card hero">
+    <div class="pill-row"><span class="pill accent">Recovery Intelligence</span><span class="pill">${rec.level || "trend"}</span></div>
+    <h3>${rec.title}</h3>
+    <p class="muted">${rec.message}</p>
+    <div class="grid two">
+      <div class="stat"><span class="muted small">Debriefs</span><strong>${trend.recent?.length || 0}</strong></div>
+      <div class="stat"><span class="muted small">Issues</span><strong>${trend.issues || 0}</strong></div>
+      <div class="stat"><span class="muted small">Very Hard</span><strong>${trend.veryHard || 0}</strong></div>
+      <div class="stat"><span class="muted small">Heavy Legs</span><strong>${trend.heavyLegs || 0}</strong></div>
+    </div>
+  </section>`;
+}
+
+function coachTabStatusCardV111(){
+  return `<section class="card">
+    <strong>Workout Status Types</strong>
+    <p class="muted small">RUUT separates Completed, Modified Workout, Recovery Substitution, Planned Rest, Missed, and Skipped so the coach logic can tell the difference.</p>
+  </section>`;
+}
+
+function renderCoachV111(){
+  ensureCoachScreenV111();
+  const coach = document.getElementById("coach");
+  if(!coach) return;
+
+  coach.innerHTML = `
+    <section class="card hero" style="border-left:4px solid var(--accent)">
+      <div class="pill-row"><span class="pill accent">Coach</span></div>
+      <h2>RUUT Coaching System</h2>
+      <p class="muted">This is where RUUT explains why it recommends, modifies, holds, or reduces training.</p>
+    </section>
+    ${coachTabProfileCardV111()}
+    ${coachTabVoiceCardV111()}
+    ${coachTabWeeklyCardV111()}
+    ${coachTabDynamicPlanCardV111()}
+    ${coachTabProgressionCardV111()}
+    ${coachTabRecoveryCardV111()}
+    ${coachTabStatusCardV111()}
+  `;
+}
+
+const renderAllV111Base = renderAll;
+renderAll = function(){
+  ensureCoachScreenV111();
+  renderAllV111Base();
+  renderCoachV111();
+};
+
+const showScreenV111Base = showScreen;
+showScreen = function(id,btn){
+  ensureCoachScreenV111();
+  showScreenV111Base(id,btn);
+  if(id==="coach") renderCoachV111();
+};
+
+ensureCoachScreenV111();
+setTimeout(()=>{ensureCoachScreenV111(); renderCoachV111();},500);
+
 renderAll();
