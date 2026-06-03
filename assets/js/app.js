@@ -6846,4 +6846,230 @@ showScreen = function(id,btn){
   if(id==="coach") setTimeout(cleanupVoiceButtonsV120,100);
 };
 
+
+// ---------- V12.0.1 AUDIO QUEUE + SKIP CONTROL ----------
+let ruutAudioTokenV1201 = 0;
+let ruutLastVoiceKeyV1201 = "";
+let ruutLastVoiceAtV1201 = 0;
+
+function ruutStopAudioV120(){
+  ruutAudioTokenV1201++;
+  try{
+    if(ruutAudioV120){
+      ruutAudioV120.pause();
+      ruutAudioV120.currentTime = 0;
+    }
+  }catch(e){}
+  try{
+    if(currentCoachAudioV105){
+      currentCoachAudioV105.pause();
+      currentCoachAudioV105.currentTime = 0;
+    }
+  }catch(e){}
+  try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
+}
+
+function ruutShouldDebounceVoiceV1201(key){
+  const now = Date.now();
+  if(key === ruutLastVoiceKeyV1201 && now - ruutLastVoiceAtV1201 < 2500){
+    return true;
+  }
+  ruutLastVoiceKeyV1201 = key;
+  ruutLastVoiceAtV1201 = now;
+  return false;
+}
+
+function ruutPlayVoiceV120(key,statusEl=null){
+  if(ruutShouldDebounceVoiceV1201(key)){
+    if(statusEl) statusEl.textContent = "Duplicate cue ignored.";
+    return Promise.resolve(false);
+  }
+  return ruutPlayCandidatesV120(ruutVoiceCandidatesV120(key),statusEl);
+}
+
+function ruutPlayBriefingV120(kind,statusEl=null){
+  return ruutPlayCandidatesV120(ruutBriefingCandidatesV120(kind),statusEl);
+}
+
+function ruutPlayCandidatesV120(candidates,statusEl=null){
+  const myToken = ++ruutAudioTokenV1201;
+
+  return new Promise(resolve=>{
+    let index = 0;
+
+    const tryOne = () => {
+      if(myToken !== ruutAudioTokenV1201){
+        resolve(false);
+        return;
+      }
+
+      if(index >= candidates.length){
+        if(statusEl) statusEl.textContent = "Recorded MP3 not found.";
+        resolve(false);
+        return;
+      }
+
+      const url = candidates[index++];
+
+      try{
+        // Stop previous file without invalidating this new token.
+        try{
+          if(ruutAudioV120){
+            ruutAudioV120.pause();
+            ruutAudioV120.currentTime = 0;
+          }
+          if(currentCoachAudioV105){
+            currentCoachAudioV105.pause();
+            currentCoachAudioV105.currentTime = 0;
+          }
+          if(window.speechSynthesis) window.speechSynthesis.cancel();
+        }catch(e){}
+
+        const audio = new Audio(url);
+        ruutAudioV120 = audio;
+        currentCoachAudioV105 = audio;
+        audio.preload = "auto";
+        audio.volume = 1;
+
+        if(statusEl) statusEl.textContent = `Trying: ${url}`;
+
+        audio.onplaying = ()=>{
+          if(myToken !== ruutAudioTokenV1201){
+            try{audio.pause();}catch(e){}
+            return;
+          }
+          if(statusEl) statusEl.textContent = "Playing recorded voice.";
+        };
+
+        audio.onended = ()=>{
+          if(myToken === ruutAudioTokenV1201 && statusEl) statusEl.textContent = "Finished.";
+          resolve(myToken === ruutAudioTokenV1201);
+        };
+
+        audio.onerror = ()=>tryOne();
+
+        const p = audio.play();
+        if(p && typeof p.catch === "function"){
+          p.catch(()=>tryOne());
+        }
+      }catch(e){
+        tryOne();
+      }
+    };
+
+    tryOne();
+  });
+}
+
+// Replace older compatibility shims again.
+function playCoachAudioV105(key){ return ruutPlayVoiceV120(key); }
+async function coachCueV105(key){ return ruutPlayVoiceV120(key); }
+function testVoiceCoachDirectV1121(){ return ruutPlayVoiceV120("workout_start", document.getElementById("voiceTestStatusV120") || document.getElementById("voiceCoachInlineStatusV1121")); }
+window.playCoachAudioV105 = playCoachAudioV105;
+window.coachCueV105 = coachCueV105;
+window.testVoiceCoachDirectV1121 = testVoiceCoachDirectV1121;
+
+// Skip must stop any active recorded voice immediately.
+const skipCurrentV1201Base = skipCurrent;
+skipCurrent = function(){
+  ruutStopAudioV120();
+  return skipCurrentV1201Base();
+};
+window.skipCurrent = skipCurrent;
+
+const togglePauseV1201Base = togglePause;
+togglePause = function(){
+  ruutStopAudioV120();
+  return togglePauseV1201Base();
+};
+window.togglePause = togglePause;
+
+// Safer run/walk sequencing.
+// Do not trigger halfway while user is just skipping warmup or the first immediate transition.
+function showHalfway(){
+  setCue("TURN BACK");
+  setWorkoutMessage("Halfway point. Turn back now.");
+  ruutPlayVoiceV120("halfway");
+}
+window.showHalfway = showHalfway;
+
+async function startRun(x,readiness){
+  ruutStopAudioV120();
+  let total=x.total*60;
+  if(readiness==="tired") total=Math.round(total*.8);
+
+  let remaining=total;
+  let half=Math.floor(total/2);
+  let halfSpoken=false;
+  let runStartedAt=Date.now();
+
+  setCue("Warmup");
+  setWorkoutMessage("Warm up first. Then follow the run/walk cues.");
+
+  if(settings.warmup) await warmup();
+  if(workoutAbort) return;
+
+  // Reset after warmup skip so the first work segment does not cascade.
+  skipCurrentTimer=false;
+
+  while(remaining>0 && !workoutAbort){
+    const runDur = Math.min(x.runSeconds, remaining);
+    await runSegment("Run", runDur, remaining, total);
+    if(workoutAbort) return;
+    remaining -= runDur;
+
+    if(!halfSpoken && remaining<=half && Date.now()-runStartedAt>3000){
+      halfSpoken=true;
+      showHalfway();
+    }
+
+    if(remaining<=0) break;
+
+    const walkDur = Math.min(x.walkSeconds, remaining);
+    await runSegment("Walk", walkDur, remaining, total);
+    if(workoutAbort) return;
+    remaining -= walkDur;
+
+    if(!halfSpoken && remaining<=half && Date.now()-runStartedAt>3000){
+      halfSpoken=true;
+      showHalfway();
+    }
+  }
+
+  if(settings.cooldown) await cooldown();
+  if(workoutAbort) return;
+  finishWorkout();
+}
+window.startRun = startRun;
+
+async function runSegment(label,seconds,remaining,total){
+  ruutStopAudioV120();
+  setCue(label.toUpperCase());
+  setWorkoutMessage(label==="Run" ? "Stay controlled. Smooth is fast." : "Recover. Keep moving.");
+  await ruutPlayVoiceV120(label==="Run" ? "run_start" : "walk_recovery");
+  if(workoutAbort) return;
+  await timer(seconds,remaining,total);
+}
+window.runSegment = runSegment;
+
+// Prevent duplicate workout_start from old wrappers by making startWorkout only start the workout.
+// beginWorkout/startRun now handle cues.
+const startWorkoutV1201Base = startWorkout;
+startWorkout = function(){
+  ruutStopAudioV120();
+  ruutLastVoiceKeyV1201 = "";
+  ruutLastVoiceAtV1201 = 0;
+  return startWorkoutV1201Base();
+};
+window.startWorkout = startWorkout;
+
+// Also stop audio when workout is completed or stopped.
+const finishWorkoutV1201Base = finishWorkout;
+finishWorkout = async function(){
+  ruutStopAudioV120();
+  await ruutPlayVoiceV120("workout_complete");
+  return finishWorkoutV1201Base();
+};
+window.finishWorkout = finishWorkout;
+
 renderAll();
