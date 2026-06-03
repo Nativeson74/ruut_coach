@@ -5331,4 +5331,111 @@ function coachTabVoiceCardV111(){
 }
 window.coachTabVoiceCardV111 = coachTabVoiceCardV111;
 
+
+// ---------- V11.2.2 VOICE PATH + TTS CLEANUP ----------
+function firstAvailableVoiceUrlV1122(){
+  // workout_start is confirmed working during workout start, so use it for diagnostics.
+  return "./audio/coach/workout_start.m4a?v=1122";
+}
+
+function testVoiceCoachDirectV1121(){
+  const url = firstAvailableVoiceUrlV1122();
+  setVoiceTestStatusV1121?.("Testing known working file: workout_start.m4a");
+
+  try{
+    stopCoachAudioV105?.();
+    const audio = document.getElementById("voiceDiagnosticAudioV1121") || new Audio();
+    audio.src = url;
+    audio.preload = "auto";
+    audio.volume = 1;
+    audio.currentTime = 0;
+
+    audio.onplaying = ()=>setVoiceTestStatusV1121?.("Playing recorded workout_start.m4a.");
+    audio.onended = ()=>setVoiceTestStatusV1121?.("Test finished.");
+    audio.onerror = ()=>{
+      setVoiceTestStatusV1121?.("Could not load workout_start.m4a. Check audio/coach/workout_start.m4a.");
+      try{ speak("Audio file could not load."); }catch(e){}
+    };
+
+    const p = audio.play();
+    if(p && typeof p.then === "function"){
+      p.then(()=>setVoiceTestStatusV1121?.("Playing recorded workout_start.m4a."))
+       .catch(()=>{
+          setVoiceTestStatusV1121?.("iPhone blocked automatic playback. Use the audio control below once, then test again.");
+          try{ speak("iPhone blocked recorded voice. Use the audio control below once."); }catch(e){}
+       });
+    }
+  }catch(e){
+    setVoiceTestStatusV1121?.("Voice test failed before playback started.");
+    try{ speak("Voice test failed."); }catch(err){}
+  }
+}
+
+function openVoiceDiagnosticV1121(){
+  const url = firstAvailableVoiceUrlV1122();
+  showModal(`<h2>Voice Coach Test</h2>
+    <p class="muted">This tests a file that should already work during workout start.</p>
+    <div class="detail">
+      <strong>File</strong>
+      <p class="muted small">audio/coach/workout_start.m4a</p>
+    </div>
+    <p id="voiceTestStatusV1121" class="muted small" style="margin-top:10px">Ready to test.</p>
+    <audio id="voiceDiagnosticAudioV1121" controls playsinline preload="auto" src="${url}" style="width:100%;margin:10px 0"></audio>
+    <button onclick="testVoiceCoachDirectV1121()">Test Recorded Voice</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="window.open('${url}','_blank')">Open Audio File</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="hideModal()">Done</button>`);
+}
+
+window.testVoiceCoachDirectV1121 = testVoiceCoachDirectV1121;
+window.openVoiceDiagnosticV1121 = openVoiceDiagnosticV1121;
+window.testVoiceCoachV112 = testVoiceCoachDirectV1121;
+window.testVoiceCoachV105 = testVoiceCoachDirectV1121;
+
+// Stop old iPhone speech from stacking on top of recorded run/walk clips.
+// The old runSegment calls cue() internally after our recorded clip.
+// This override keeps visual behavior and timer behavior, but uses recorded files first.
+if(typeof timer === "function"){
+  runSegment = async function(label,seconds,remaining,total){
+    setCue(label.toUpperCase());
+    setWorkoutMessage(label==="Run" ? "Stay controlled. Smooth is fast." : "Recover. Keep moving.");
+    await coachCueV105(label==="Run" ? "run_start" : "walk_recovery", label==="Run" ? "Run now." : "Walk now.");
+    await timer(seconds,remaining,total);
+  };
+  if(typeof window !== "undefined") window.runSegment = runSegment;
+}
+
+// Also improve strength/recovery spoken fallback by not forcing iPhone voice when a matching recorded clip exists.
+async function cue(text){
+  const phraseText = String(text || "").trim();
+  const lower = phraseText.toLowerCase();
+
+  if(state.voiceCoach?.enabled !== false){
+    if(lower.includes("workout complete")){
+      await coachCueV105("workout_complete", phraseText);
+      return;
+    }
+    if(lower.includes("cooldown")){
+      await coachCueV105("cooldown_start", phraseText);
+      return;
+    }
+    if(lower.includes("warm")){
+      await coachCueV105("warmup_start", phraseText);
+      return;
+    }
+    if(lower.includes("rest day")){
+      await coachCueV105("rest_day", phraseText);
+      return;
+    }
+    if(lower.includes("recovery")){
+      await coachCueV105("recovery_substitution", phraseText);
+      return;
+    }
+  }
+
+  await speak(phraseText);
+}
+if(typeof window !== "undefined") window.cue = cue;
+
 renderAll();
