@@ -5621,4 +5621,282 @@ coachTabVoiceCardV111 = function(){
 };
 window.coachTabVoiceCardV111 = coachTabVoiceCardV111;
 
+
+// ---------- V11.4 VOICE PACKS + RECORDED-FIRST AUDIO ----------
+const RUUT_VOICE_PACKS_V114 = {
+  balanced:{
+    label:"Balanced",
+    base:"./audio/coach/",
+    briefingBase:"./audio/coach/briefings/"
+  },
+  tough:{
+    label:"Tough Love",
+    base:"./audio/coach/tough/",
+    briefingBase:"./audio/coach/tough/briefings/"
+  },
+  trail:{
+    label:"Trail Guide",
+    base:"./audio/coach/trail/",
+    briefingBase:"./audio/coach/trail/briefings/"
+  }
+};
+
+function getVoicePackV114(){
+  state.voiceCoach = state.voiceCoach || {};
+  state.voiceCoach.pack = state.voiceCoach.pack || "balanced";
+  return RUUT_VOICE_PACKS_V114[state.voiceCoach.pack] ? state.voiceCoach.pack : "balanced";
+}
+
+function getVoicePackInfoV114(pack=getVoicePackV114()){
+  return RUUT_VOICE_PACKS_V114[pack] || RUUT_VOICE_PACKS_V114.balanced;
+}
+
+function voicePackLabelV114(){
+  return getVoicePackInfoV114().label;
+}
+
+function audioCandidatesV114(key){
+  const file = RUUT_AUDIO_FILES_V105?.[key] || `${key}.m4a`;
+  const pack = getVoicePackV114();
+  const info = getVoicePackInfoV114(pack);
+  const candidates = [];
+
+  // Selected pack first.
+  if(pack !== "balanced"){
+    candidates.push(`${info.base}${file}?v=114`);
+    // Allow mp3 voice packs even if current balanced files are m4a.
+    candidates.push(`${info.base}${file.replace(".m4a",".mp3")}?v=114`);
+  }
+
+  // Balanced/default fallback.
+  candidates.push(`./audio/coach/${file}?v=114`);
+  candidates.push(`./audio/coach/${file.replace(".m4a",".mp3")}?v=114`);
+
+  return [...new Set(candidates)];
+}
+
+function briefingCandidatesV114(kind){
+  const baseFile = briefingFileV113 ? briefingFileV113(kind) : `${kind}.mp3`;
+  const pack = getVoicePackV114();
+  const info = getVoicePackInfoV114(pack);
+  const candidates = [];
+
+  if(pack !== "balanced"){
+    candidates.push(`${info.briefingBase}${baseFile}?v=114`);
+    // Also support Tough Love naming from the recording script.
+    candidates.push(`${info.base}briefing_${baseFile}?v=114`);
+    candidates.push(`${info.base}briefing_${baseFile.replace(".mp3",".m4a")}?v=114`);
+  }
+
+  candidates.push(`./audio/coach/briefings/${baseFile}?v=114`);
+  candidates.push(`./audio/coach/briefings/${baseFile.replace(".mp3",".m4a")}?v=114`);
+
+  return [...new Set(candidates)];
+}
+
+function playFirstAvailableAudioV114(candidates, fallbackText="", statusEl=null){
+  return new Promise(resolve=>{
+    if(!state.voiceCoach) state.voiceCoach = {};
+    if(state.voiceCoach.enabled === false){
+      if(state.voiceCoach.fallbackSpeech && fallbackText) speak(fallbackText);
+      resolve(false);
+      return;
+    }
+
+    let i = 0;
+
+    const tryNext = () => {
+      if(i >= candidates.length){
+        if(statusEl) statusEl.textContent = "Recorded file not found. Using phone voice fallback.";
+        if(state.voiceCoach?.fallbackSpeech && fallbackText) speak(fallbackText);
+        resolve(false);
+        return;
+      }
+
+      const url = candidates[i++];
+      try{
+        stopCoachAudioV105?.();
+        const audio = new Audio(url);
+        currentCoachAudioV105 = audio;
+        audio.preload = "auto";
+        audio.volume = 1;
+
+        if(statusEl) statusEl.textContent = `Trying ${url.replace(location.origin,"")}`;
+
+        audio.onplaying = ()=>{ if(statusEl) statusEl.textContent = "Playing recorded voice."; };
+        audio.onended = ()=>{ if(statusEl) statusEl.textContent = "Finished."; resolve(true); };
+        audio.onerror = ()=>tryNext();
+
+        const p = audio.play();
+        if(p && typeof p.catch === "function"){
+          p.then(()=>{}).catch(()=>tryNext());
+        }
+      }catch(e){
+        tryNext();
+      }
+    };
+
+    tryNext();
+  });
+}
+
+function playCoachAudioV105(key, fallbackText=""){
+  return playFirstAvailableAudioV114(audioCandidatesV114(key), fallbackText);
+}
+
+async function coachCueV105(key, fallbackText=""){
+  return playCoachAudioV105(key, fallbackText);
+}
+
+function playBriefingAudioV113(kind){
+  const status = document.getElementById("briefingAudioStatusV113");
+  if(status) status.textContent = "Playing briefing...";
+  return playFirstAvailableAudioV114(briefingCandidatesV114(kind), "Briefing audio file could not load.", status);
+}
+
+function testVoiceCoachDirectV1121(){
+  const status = document.getElementById("voiceTestStatusV1121") || document.getElementById("voiceTestStatusV112") || document.getElementById("voiceCoachInlineStatusV1121");
+  if(status) status.textContent = `Testing ${voicePackLabelV114()} voice pack...`;
+  return playFirstAvailableAudioV114(audioCandidatesV114("workout_start"), "Voice test fallback.", status);
+}
+
+function openVoiceDiagnosticV1121(){
+  const pack = voicePackLabelV114();
+  const candidates = audioCandidatesV114("workout_start");
+  const first = candidates[0];
+
+  showModal(`<h2>Voice Coach Test</h2>
+    <p class="muted">Testing the selected voice pack: <strong>${pack}</strong></p>
+    <div class="detail">
+      <strong>Primary File</strong>
+      <p class="muted small">${first}</p>
+    </div>
+    <p id="voiceTestStatusV1121" class="muted small" style="margin-top:10px">Ready to test.</p>
+    <audio id="voiceDiagnosticAudioV1121" controls playsinline preload="auto" src="${first}" style="width:100%;margin:10px 0"></audio>
+    <button onclick="testVoiceCoachDirectV1121()">Test Recorded Voice</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="window.open('${first}','_blank')">Open Primary File</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="hideModal()">Done</button>`);
+}
+
+function openVoiceSettingsV105(){
+  const vc = state.voiceCoach || {enabled:true,fallbackSpeech:true,pack:"balanced"};
+  const pack = vc.pack || "balanced";
+
+  showModal(`<h2>Voice Coach</h2>
+    <p class="muted">Choose the coaching voice style RUUT should use.</p>
+
+    <label><input type="checkbox" id="voiceCoachEnabledV105" ${vc.enabled !== false ? "checked" : ""}> Use recorded voice files</label><br>
+    <label><input type="checkbox" id="voiceFallbackV105" ${vc.fallbackSpeech !== false ? "checked" : ""}> Fall back to phone voice if a file is missing</label>
+
+    <div style="height:12px"></div>
+    <label class="small muted">Voice Pack</label>
+    <select id="voicePackV114">
+      <option value="balanced" ${pack==="balanced" ? "selected" : ""}>Balanced</option>
+      <option value="tough" ${pack==="tough" ? "selected" : ""}>Tough Love</option>
+      <option value="trail" ${pack==="trail" ? "selected" : ""}>Trail Guide</option>
+    </select>
+
+    <p id="voiceTestStatusV112" class="muted small" style="margin-top:10px">Current pack: ${voicePackLabelV114()}</p>
+
+    <div style="height:12px"></div>
+    <button onclick="saveVoiceSettingsV105()">Save Voice Settings</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="openVoiceDiagnosticV1121()">Test Voice Pack</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="hideModal()">Cancel</button>`);
+}
+
+function saveVoiceSettingsV105(){
+  state.voiceCoach = state.voiceCoach || {};
+  state.voiceCoach.enabled = !!document.getElementById("voiceCoachEnabledV105")?.checked;
+  state.voiceCoach.fallbackSpeech = !!document.getElementById("voiceFallbackV105")?.checked;
+  state.voiceCoach.pack = document.getElementById("voicePackV114")?.value || "balanced";
+  saveState();
+  hideModal();
+}
+
+// Recorded-first cue mapping. This reduces surprise iPhone voice during workouts.
+async function cue(text){
+  const phraseText = String(text || "").trim();
+  const lower = phraseText.toLowerCase();
+
+  if(state.voiceCoach?.enabled !== false){
+    if(lower.includes("workout complete") || lower.includes("complete")){
+      await coachCueV105("workout_complete", phraseText);
+      return;
+    }
+    if(lower.includes("cooldown")){
+      await coachCueV105("cooldown_start", phraseText);
+      return;
+    }
+    if(lower.includes("warm")){
+      await coachCueV105("warmup_start", phraseText);
+      return;
+    }
+    if(lower.includes("half")){
+      await coachCueV105("halfway", phraseText);
+      return;
+    }
+    if(lower.includes("run")){
+      await coachCueV105("run_start", phraseText);
+      return;
+    }
+    if(lower.includes("walk") || lower.includes("recover")){
+      await coachCueV105("walk_recovery", phraseText);
+      return;
+    }
+    if(lower.includes("rest day")){
+      await coachCueV105("rest_day", phraseText);
+      return;
+    }
+    if(lower.includes("recovery")){
+      await coachCueV105("recovery_substitution", phraseText);
+      return;
+    }
+  }
+
+  if(state.voiceCoach?.fallbackSpeech !== false){
+    await speak(phraseText);
+  }
+}
+window.cue = cue;
+
+// Override run/walk again after all older versions.
+if(typeof timer === "function"){
+  runSegment = async function(label,seconds,remaining,total){
+    setCue(label.toUpperCase());
+    setWorkoutMessage(label==="Run" ? "Stay controlled. Smooth is fast." : "Recover. Keep moving.");
+    await coachCueV105(label==="Run" ? "run_start" : "walk_recovery", label==="Run" ? "Run now." : "Walk now.");
+    await timer(seconds,remaining,total);
+  };
+  window.runSegment = runSegment;
+}
+
+function coachTabVoiceCardV111(){
+  const enabled = state.voiceCoach?.enabled !== false;
+  return `<section class="card hero">
+    <div class="pill-row"><span class="pill accent">Voice Coach</span><span class="pill">${enabled ? "Enabled" : "Disabled"}</span><span class="pill">${voicePackLabelV114()}</span></div>
+    <h3>Recorded Voice Files</h3>
+    <p class="muted">RUUT now supports selectable voice packs. Missing files fall back to the Balanced pack, then phone voice if enabled.</p>
+    <p id="voiceCoachInlineStatusV1121" class="muted small">Voice test ready.</p>
+    <div class="grid two">
+      <button class="secondary" onclick="openVoiceSettingsV105()">Voice Settings</button>
+      <button class="secondary" onclick="openVoiceDiagnosticV1121()">Test Voice</button>
+    </div>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="openBriefingAudioTestV113()">Test Briefing Audio</button>
+  </section>`;
+}
+window.coachTabVoiceCardV111 = coachTabVoiceCardV111;
+
+// Ensure Voice Settings re-render correctly inside Coach tab.
+const renderCoachV114Base = typeof renderCoachV111 === "function" ? renderCoachV111 : null;
+if(renderCoachV114Base){
+  renderCoachV111 = function(){
+    renderCoachV114Base();
+  };
+}
+
 renderAll();
