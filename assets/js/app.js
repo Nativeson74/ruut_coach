@@ -5948,4 +5948,236 @@ if(typeof window !== "undefined"){
   window.saveVoiceSettingsV105 = saveVoiceSettingsV105;
 }
 
+
+// ---------- V11.5 CLEANUP + COACH STYLE VOICE UNIFICATION ----------
+function styleToVoicePackV115(){
+  const s = String(settings.coachStyle || "trail").toLowerCase();
+  if(s.includes("tough")) return "tough";
+  if(s.includes("trail")) return "trail";
+  return "balanced";
+}
+
+function styleLabelV115(){
+  const s = styleToVoicePackV115();
+  if(s==="tough") return "Tough Love";
+  if(s==="trail") return "Trail Guide";
+  return "Balanced";
+}
+
+function syncVoicePackToCoachStyleV115(){
+  state.voiceCoach = state.voiceCoach || {};
+  state.voiceCoach.pack = styleToVoicePackV115();
+  if(state.voiceCoach.enabled === undefined) state.voiceCoach.enabled = true;
+  // Important: default OFF prevents iPhone voice from talking over recorded audio.
+  if(state.voiceCoach.fallbackSpeech === undefined) state.voiceCoach.fallbackSpeech = false;
+}
+
+syncVoicePackToCoachStyleV115();
+
+function getVoicePackV114(){
+  syncVoicePackToCoachStyleV115();
+  return state.voiceCoach.pack || "balanced";
+}
+
+function voicePackLabelV114(){
+  return styleLabelV115();
+}
+
+function cancelPhoneSpeechV115(){
+  try{
+    if("speechSynthesis" in window){
+      window.speechSynthesis.cancel();
+    }
+  }catch(e){}
+}
+
+// Recorded audio only by default. Phone voice fallback is optional, not automatic.
+function playFirstAvailableAudioV114(candidates, fallbackText="", statusEl=null){
+  syncVoicePackToCoachStyleV115();
+
+  return new Promise(resolve=>{
+    if(!state.voiceCoach) state.voiceCoach = {};
+    if(state.voiceCoach.enabled === false){
+      if(state.voiceCoach.fallbackSpeech && fallbackText) speak(fallbackText);
+      resolve(false);
+      return;
+    }
+
+    let i = 0;
+
+    const tryNext = () => {
+      if(i >= candidates.length){
+        if(statusEl) statusEl.textContent = state.voiceCoach.fallbackSpeech ? "Recorded file not found. Using phone voice fallback." : "Recorded file not found. Phone voice fallback is off.";
+        if(state.voiceCoach.fallbackSpeech && fallbackText) speak(fallbackText);
+        resolve(false);
+        return;
+      }
+
+      const url = candidates[i++];
+
+      try{
+        cancelPhoneSpeechV115();
+        stopCoachAudioV105?.();
+
+        const audio = new Audio(url);
+        currentCoachAudioV105 = audio;
+        audio.preload = "auto";
+        audio.volume = 1;
+
+        if(statusEl) statusEl.textContent = `Trying ${url}`;
+
+        audio.onplaying = ()=>{
+          cancelPhoneSpeechV115();
+          if(statusEl) statusEl.textContent = "Playing recorded voice.";
+        };
+
+        audio.onended = ()=>{
+          if(statusEl) statusEl.textContent = "Finished.";
+          resolve(true);
+        };
+
+        audio.onerror = ()=>tryNext();
+
+        const p = audio.play();
+        if(p && typeof p.catch === "function"){
+          p.then(()=>cancelPhoneSpeechV115()).catch(()=>tryNext());
+        }
+      }catch(e){
+        tryNext();
+      }
+    };
+
+    tryNext();
+  });
+}
+
+function playCoachAudioV105(key, fallbackText=""){
+  return playFirstAvailableAudioV114(audioCandidatesV114(key), fallbackText);
+}
+
+async function coachCueV105(key, fallbackText=""){
+  return playCoachAudioV105(key, fallbackText);
+}
+
+// This is the main anti-overlap fix.
+// If recorded voice is enabled, RUUT will not call iPhone speech unless fallback is explicitly on.
+async function cue(text){
+  const phraseText = String(text || "").trim();
+  const lower = phraseText.toLowerCase();
+
+  if(state.voiceCoach?.enabled !== false){
+    let key = null;
+    if(lower.includes("workout complete") || lower.includes("complete")) key = "workout_complete";
+    else if(lower.includes("cooldown")) key = "cooldown_start";
+    else if(lower.includes("warm")) key = "warmup_start";
+    else if(lower.includes("half")) key = "halfway";
+    else if(lower.includes("run")) key = "run_start";
+    else if(lower.includes("walk") || lower.includes("recover")) key = "walk_recovery";
+    else if(lower.includes("rest day")) key = "rest_day";
+    else if(lower.includes("recovery")) key = "recovery_substitution";
+
+    if(key){
+      await coachCueV105(key, phraseText);
+      return;
+    }
+
+    // No matching recording exists. Do NOT speak over the workout unless user enabled fallback.
+    if(state.voiceCoach.fallbackSpeech){
+      await speak(phraseText);
+    }
+    return;
+  }
+
+  if(state.voiceCoach?.fallbackSpeech !== false){
+    await speak(phraseText);
+  }
+}
+window.cue = cue;
+
+// Replace run/walk one final time so old phone voice does not stack.
+if(typeof timer === "function"){
+  runSegment = async function(label,seconds,remaining,total){
+    setCue(label.toUpperCase());
+    setWorkoutMessage(label==="Run" ? "Stay controlled. Smooth is fast." : "Recover. Keep moving.");
+    await coachCueV105(label==="Run" ? "run_start" : "walk_recovery", label==="Run" ? "Run now." : "Walk now.");
+    await timer(seconds,remaining,total);
+  };
+  window.runSegment = runSegment;
+}
+
+// Settings cleanup: one source of truth. Coach Style drives voice pack automatically.
+openVoiceSettingsV105 = function(){
+  syncVoicePackToCoachStyleV115();
+  const vc = state.voiceCoach || {enabled:true,fallbackSpeech:false};
+
+  showModal(`<h2>Voice Coach</h2>
+    <p class="muted">Voice pack now follows your Coach Style setting.</p>
+
+    <div class="detail">
+      <strong>Active Voice Pack</strong>
+      <p class="muted">${styleLabelV115()}</p>
+      <p class="muted small">Change this from Settings → Coach Style.</p>
+    </div>
+
+    <div style="height:10px"></div>
+    <label><input type="checkbox" id="voiceCoachEnabledV105" ${vc.enabled !== false ? "checked" : ""}> Use recorded voice files</label><br>
+    <label><input type="checkbox" id="voiceFallbackV105" ${vc.fallbackSpeech ? "checked" : ""}> Use iPhone voice only when a recording is missing</label>
+
+    <p id="voiceTestStatusV112" class="muted small" style="margin-top:10px">Current voice pack: ${styleLabelV115()}</p>
+
+    <div style="height:12px"></div>
+    <button onclick="saveVoiceSettingsV105()">Save Voice Settings</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="openVoiceDiagnosticV1121()">Test Voice</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="hideModal()">Cancel</button>`);
+};
+
+saveVoiceSettingsV105 = function(){
+  state.voiceCoach = state.voiceCoach || {};
+  state.voiceCoach.enabled = !!document.getElementById("voiceCoachEnabledV105")?.checked;
+  state.voiceCoach.fallbackSpeech = !!document.getElementById("voiceFallbackV105")?.checked;
+  state.voiceCoach.pack = styleToVoicePackV115();
+  saveState();
+  hideModal();
+};
+
+window.openVoiceSettingsV105 = openVoiceSettingsV105;
+window.saveVoiceSettingsV105 = saveVoiceSettingsV105;
+
+// Remove duplicate Test Briefing Audio buttons and keep one clean voice card.
+function coachTabVoiceCardV111(){
+  syncVoicePackToCoachStyleV115();
+  const enabled = state.voiceCoach?.enabled !== false;
+  const fallback = !!state.voiceCoach?.fallbackSpeech;
+
+  return `<section class="card hero">
+    <div class="pill-row"><span class="pill accent">Voice Coach</span><span class="pill">${enabled ? "Enabled" : "Disabled"}</span><span class="pill">${styleLabelV115()}</span></div>
+    <h3>Recorded Voice Files</h3>
+    <p class="muted">Voice style follows Coach Style. Missing recordings fall back to Balanced recordings first.</p>
+    <p class="muted small">iPhone voice fallback: ${fallback ? "On" : "Off"}</p>
+    <p id="voiceCoachInlineStatusV1121" class="muted small">Voice test ready.</p>
+    <div class="grid two">
+      <button class="secondary" onclick="openVoiceSettingsV105()">Voice Settings</button>
+      <button class="secondary" onclick="openVoiceDiagnosticV1121()">Test Voice</button>
+    </div>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="openBriefingAudioTestV113()">Test Briefing Audio</button>
+  </section>`;
+}
+window.coachTabVoiceCardV111 = coachTabVoiceCardV111;
+
+// Keep state synced whenever app renders.
+const renderAllV115Base = renderAll;
+renderAll = function(){
+  syncVoicePackToCoachStyleV115();
+  renderAllV115Base();
+};
+
+const showScreenV115Base = showScreen;
+showScreen = function(id,btn){
+  syncVoicePackToCoachStyleV115();
+  showScreenV115Base(id,btn);
+};
+
 renderAll();
