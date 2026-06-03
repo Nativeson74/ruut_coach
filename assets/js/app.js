@@ -5220,4 +5220,115 @@ startWorkout = function(){
   return startWorkoutV112Base();
 };
 
+
+// ---------- V11.2.1 VOICE TEST DIAGNOSTIC FIX ----------
+function voiceFileUrlV1121(key="coach_message"){
+  const map = typeof RUUT_AUDIO_FILES_V105 !== "undefined" ? RUUT_AUDIO_FILES_V105 : {};
+  const file = map[key] || "coach_message.m4a";
+  return `./audio/coach/${file}?v=1121`;
+}
+
+function setVoiceTestStatusV1121(msg){
+  const targets = [
+    document.getElementById("voiceTestStatusV112"),
+    document.getElementById("voiceTestStatusV1121"),
+    document.getElementById("voiceCoachInlineStatusV1121")
+  ];
+  targets.forEach(t=>{ if(t) t.textContent = msg; });
+}
+
+function testVoiceCoachDirectV1121(){
+  const url = voiceFileUrlV1121("coach_message");
+  setVoiceTestStatusV1121("Trying recorded voice...");
+
+  try{
+    const audio = document.getElementById("voiceDiagnosticAudioV1121") || new Audio();
+    audio.src = url;
+    audio.preload = "auto";
+    audio.volume = 1;
+    audio.currentTime = 0;
+
+    audio.onplaying = ()=>setVoiceTestStatusV1121("Playing recorded voice.");
+    audio.onended = ()=>setVoiceTestStatusV1121("Test finished.");
+    audio.onerror = ()=>{
+      setVoiceTestStatusV1121("Could not load audio file. Check that audio/coach/coach_message.m4a exists in GitHub.");
+      try{ speak("Audio file could not load."); }catch(e){}
+    };
+
+    const p = audio.play();
+    if(p && typeof p.then === "function"){
+      p.then(()=>setVoiceTestStatusV1121("Playing recorded voice."))
+       .catch(err=>{
+          setVoiceTestStatusV1121("iPhone blocked automatic playback. Use the audio control below once, then test again.");
+          try{ speak("iPhone blocked recorded voice. Use the audio control below once."); }catch(e){}
+       });
+    }
+  }catch(e){
+    setVoiceTestStatusV1121("Voice test failed before playback started.");
+    try{ speak("Voice test failed."); }catch(err){}
+  }
+}
+
+function openVoiceDiagnosticV1121(){
+  const url = voiceFileUrlV1121("coach_message");
+  showModal(`<h2>Voice Coach Test</h2>
+    <p class="muted">This tests the actual recorded file RUUT is trying to play.</p>
+
+    <div class="detail">
+      <strong>File</strong>
+      <p class="muted small">audio/coach/coach_message.m4a</p>
+    </div>
+
+    <p id="voiceTestStatusV1121" class="muted small" style="margin-top:10px">Ready to test.</p>
+
+    <audio id="voiceDiagnosticAudioV1121" controls playsinline preload="auto" src="${url}" style="width:100%;margin:10px 0"></audio>
+
+    <button onclick="testVoiceCoachDirectV1121()">Test Recorded Voice</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="window.open('${url}','_blank')">Open Audio File</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="hideModal()">Done</button>`);
+}
+
+// Replace all old test hooks with the diagnostic.
+testVoiceCoachV112 = testVoiceCoachDirectV1121;
+testVoiceCoachV105 = testVoiceCoachDirectV1121;
+
+// Make functions explicit globals for iPhone Safari/Home Screen onclick handlers.
+window.testVoiceCoachDirectV1121 = testVoiceCoachDirectV1121;
+window.openVoiceDiagnosticV1121 = openVoiceDiagnosticV1121;
+window.testVoiceCoachV112 = testVoiceCoachDirectV1121;
+window.testVoiceCoachV105 = testVoiceCoachDirectV1121;
+
+openVoiceSettingsV105 = function(){
+  const vc = state.voiceCoach || {enabled:true,fallbackSpeech:true};
+  showModal(`<h2>Voice Coach</h2>
+    <p class="muted">Use your recorded voice files for workout coaching.</p>
+    <label><input type="checkbox" id="voiceCoachEnabledV105" ${vc.enabled ? "checked" : ""}> Use recorded voice files</label><br>
+    <label><input type="checkbox" id="voiceFallbackV105" ${vc.fallbackSpeech ? "checked" : ""}> Fall back to phone voice if a file is missing</label>
+    <p id="voiceTestStatusV112" class="muted small" style="margin-top:10px">Ready to test.</p>
+    <div style="height:12px"></div>
+    <button onclick="saveVoiceSettingsV105()">Save Voice Settings</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="openVoiceDiagnosticV1121()">Open Voice Test</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="hideModal()">Cancel</button>`);
+};
+
+// Replace Coach tab Voice card so the user gets feedback instead of a silent button.
+function coachTabVoiceCardV111(){
+  const enabled = state.voiceCoach?.enabled !== false;
+  return `<section class="card hero">
+    <div class="pill-row"><span class="pill accent">Voice Coach</span><span class="pill">${enabled ? "Enabled" : "Disabled"}</span></div>
+    <h3>Recorded Voice Files</h3>
+    <p class="muted">Use your recorded voice prompts during workouts.</p>
+    <p id="voiceCoachInlineStatusV1121" class="muted small">Voice test ready.</p>
+    <div class="grid two">
+      <button class="secondary" onclick="openVoiceSettingsV105()">Voice Settings</button>
+      <button class="secondary" onclick="openVoiceDiagnosticV1121()">Test Voice</button>
+    </div>
+  </section>`;
+}
+window.coachTabVoiceCardV111 = coachTabVoiceCardV111;
+
 renderAll();
