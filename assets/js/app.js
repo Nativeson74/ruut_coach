@@ -5438,4 +5438,187 @@ async function cue(text){
 }
 if(typeof window !== "undefined") window.cue = cue;
 
+
+// ---------- V11.3 WORKOUT BRIEFINGS ----------
+const RUUT_BRIEFING_BASE_V113 = "./audio/coach/briefings/";
+
+function classifyBriefingV113(workout){
+  const x = workout || currentWorkout();
+  const title = String(x?.title || "").toLowerCase();
+  const type = String(x?.type || "").toLowerCase();
+  const day = String(x?.day || "").toLowerCase();
+  const structure = String(x?.structure || "").toLowerCase();
+
+  let dynamicMode = "";
+  try{
+    const approved = typeof getApprovedPlanV102 === "function" ? getApprovedPlanV102() : null;
+    dynamicMode = String(approved?.mode || x?.dynamicPlanMode || "").toLowerCase();
+  }catch(e){}
+
+  if(dynamicMode === "progress" || title.includes("progressed")) return "progression";
+  if(dynamicMode === "reduce" || title.includes("reduced")) return "reduced";
+  if(type === "rest" || title.includes("recovery") || title.includes("rest")) return "recovery";
+  if(type === "bodyweight" || title.includes("strength")) return "strength";
+  if(day === "sat" || title.includes("long")) return "long_run";
+  if(title.includes("interval") || title.includes("hill") || structure.includes("interval") || structure.includes("run /") || structure.includes("run/")) return "intervals";
+  return "easy_day";
+}
+
+function briefingFileV113(kind){
+  const files = {
+    easy_day:"easy_day.mp3",
+    intervals:"intervals.mp3",
+    long_run:"long_run.mp3",
+    recovery:"recovery.mp3",
+    strength:"strength.mp3",
+    progression:"progression.mp3",
+    reduced:"reduced.mp3"
+  };
+  return files[kind] || files.easy_day;
+}
+
+function briefingTitleV113(kind){
+  return {
+    easy_day:"Consistency Day",
+    intervals:"Controlled Intervals",
+    long_run:"Endurance Day",
+    recovery:"Recovery Day",
+    strength:"Strength Day",
+    progression:"Progression Day",
+    reduced:"Reduced Load Day"
+  }[kind] || "Workout Briefing";
+}
+
+function briefingGoalV113(kind){
+  return {
+    easy_day:"Build consistency without chasing intensity.",
+    intervals:"Increase effort during the hard portions while staying controlled.",
+    long_run:"Build endurance with patient, sustainable effort.",
+    recovery:"Move easily and let your body absorb the training.",
+    strength:"Use clean form, controlled reps, and steady breathing.",
+    progression:"Handle the added work with discipline and control.",
+    reduced:"Protect recovery while still keeping the habit alive."
+  }[kind] || "Complete today’s workout with control.";
+}
+
+function briefingSuccessV113(kind){
+  return {
+    easy_day:"You finish feeling steady, not drained.",
+    intervals:"You complete each hard portion without sprinting or falling apart.",
+    long_run:"You keep the pace comfortable and finish with patience.",
+    recovery:"You finish feeling better than when you started.",
+    strength:"You complete the work with clean form and no grinding.",
+    progression:"You complete the extra work without sacrificing form.",
+    reduced:"You respect the reduction and avoid turning it into a hard day."
+  }[kind] || "You complete the planned work.";
+}
+
+function briefingCoachNotesV113(kind){
+  const p = typeof getCoachProfileV103 === "function" ? getCoachProfileV103() : (state.coachProfile || {});
+  const limitations = p.limitations || [];
+  let note = {
+    easy_day:"Relax your shoulders, keep the pace honest, and let the miles do their work.",
+    intervals:"Hard does not mean reckless. Push the effort, but stay smooth.",
+    long_run:"Do not burn the first half. Settle in and be patient.",
+    recovery:"Recovery is not weakness. It is how training becomes progress.",
+    strength:"Quality reps beat rushed reps. Stop before form breaks.",
+    progression:"Earn the added work. Controlled effort first, pride second.",
+    reduced:"This is a smart adjustment, not a step backward."
+  }[kind] || "Stay disciplined and keep moving forward.";
+
+  if(limitations.includes("Weak Ankles")){
+    note += " Be careful on uneven ground and avoid reckless downhill effort.";
+  }
+  if(limitations.includes("Occasional Back Issues")){
+    note += " Keep your posture clean and stop if your back tightens sharply.";
+  }
+  return note;
+}
+
+function playBriefingAudioV113(kind){
+  const file = briefingFileV113(kind);
+  const url = `${RUUT_BRIEFING_BASE_V113}${file}?v=113`;
+  const status = document.getElementById("briefingAudioStatusV113");
+  if(status) status.textContent = "Playing briefing...";
+
+  try{
+    stopCoachAudioV105?.();
+    const audio = new Audio(url);
+    currentCoachAudioV105 = audio;
+    audio.preload = "auto";
+    audio.volume = 1;
+
+    audio.onplaying = ()=>{ if(status) status.textContent = "Playing briefing audio."; };
+    audio.onended = ()=>{ if(status) status.textContent = "Briefing complete."; };
+    audio.onerror = ()=>{
+      if(status) status.textContent = `Briefing audio not found: ${file}`;
+      try{ speak("Briefing audio file could not load."); }catch(e){}
+    };
+
+    const p = audio.play();
+    if(p && typeof p.catch === "function"){
+      p.catch(()=>{
+        if(status) status.textContent = "iPhone blocked automatic playback. Tap Play Briefing again.";
+      });
+    }
+  }catch(e){
+    if(status) status.textContent = "Briefing audio failed.";
+  }
+}
+window.playBriefingAudioV113 = playBriefingAudioV113;
+
+function openBriefingV110(){
+  const x = currentWorkout();
+  const kind = classifyBriefingV113(x);
+  const file = briefingFileV113(kind);
+  const title = briefingTitleV113(kind);
+
+  showModal(`<h2>Workout Briefing</h2>
+    <div class="pill-row"><span class="pill accent">${title}</span><span class="pill">${file}</span></div>
+
+    <div class="detail"><strong>Today's Goal</strong><p class="muted">${briefingGoalV113(kind)}</p></div>
+    <div style="height:10px"></div>
+
+    <div class="detail"><strong>Success Looks Like</strong><p class="muted">${briefingSuccessV113(kind)}</p></div>
+    <div style="height:10px"></div>
+
+    <div class="detail"><strong>Coach Notes</strong><p class="muted">${briefingCoachNotesV113(kind)}</p></div>
+    <div style="height:10px"></div>
+
+    <p id="briefingAudioStatusV113" class="muted small">Ready to play briefing.</p>
+    <audio controls playsinline preload="auto" src="${RUUT_BRIEFING_BASE_V113}${file}?v=113" style="width:100%;margin:10px 0"></audio>
+
+    <button onclick="playBriefingAudioV113('${kind}')">Play Briefing</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="hideModal();startWorkout()">Start Workout</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="hideModal()">Done</button>`);
+}
+window.openBriefingV110 = openBriefingV110;
+
+function openBriefingAudioTestV113(){
+  const kinds = ["easy_day","intervals","long_run","recovery","strength","progression","reduced"];
+  showModal(`<h2>Briefing Audio Test</h2>
+    <p class="muted">Test each briefing file.</p>
+    <div class="list">
+      ${kinds.map(k=>`
+        <div class="row">
+          <div><strong>${briefingTitleV113(k)}</strong><p class="muted small">${briefingFileV113(k)}</p></div>
+          <button class="secondary" onclick="playBriefingAudioV113('${k}')">Play</button>
+        </div>
+      `).join("")}
+    </div>
+    <p id="briefingAudioStatusV113" class="muted small" style="margin-top:10px">Ready.</p>
+    <div style="height:12px"></div>
+    <button onclick="hideModal()">Done</button>`);
+}
+window.openBriefingAudioTestV113 = openBriefingAudioTestV113;
+
+const coachTabVoiceCardV113Base = typeof coachTabVoiceCardV111 === "function" ? coachTabVoiceCardV111 : null;
+coachTabVoiceCardV111 = function(){
+  const base = coachTabVoiceCardV113Base ? coachTabVoiceCardV113Base() : `<section class="card hero"><h3>Voice Coach</h3></section>`;
+  return base.replace("</section>", `<div style="height:8px"></div><button class="secondary" onclick="openBriefingAudioTestV113()">Test Briefing Audio</button></section>`);
+};
+window.coachTabVoiceCardV111 = coachTabVoiceCardV111;
+
 renderAll();
