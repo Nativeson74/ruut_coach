@@ -6376,4 +6376,107 @@ syncVoicePackToCoachStyleV115 = function(){
 window.syncVoicePackToCoachStyleV115 = syncVoicePackToCoachStyleV115;
 syncVoicePackToCoachStyleV115();
 
+
+// ---------- V11.6.1 VOICE DIAGNOSTIC + DUPLICATE BUTTON CLEANUP ----------
+function cleanupDuplicateVoiceButtonsV1161(){
+  const coach = document.getElementById("coach");
+  if(!coach) return;
+
+  const buttons = Array.from(coach.querySelectorAll("button"));
+  const briefingButtons = buttons.filter(b => (b.textContent || "").trim() === "Test Briefing Audio");
+
+  briefingButtons.forEach((b,i)=>{
+    if(i > 0){
+      const parent = b.parentElement;
+      b.remove();
+      // remove empty spacer before duplicate when possible
+      if(parent && parent.innerHTML.trim() === "") parent.remove();
+    }
+  });
+}
+
+function openVoiceDiagnosticV1121(){
+  const pack = voicePackLabelV114 ? voicePackLabelV114() : "Balanced";
+  const candidates = audioCandidatesV114 ? audioCandidatesV114("workout_start") : ["./audio/coach/workout_start.mp3?v=1161"];
+  const selectedPath = candidates[0];
+  const fallbackPath = candidates[candidates.length - 1];
+
+  showModal(`<h2>Voice Coach Test</h2>
+    <p class="muted">Testing MP3 voice pack: <strong>${pack}</strong></p>
+
+    <div class="detail">
+      <strong>Selected Pack Path</strong>
+      <p class="muted small">${selectedPath}</p>
+    </div>
+
+    <div style="height:8px"></div>
+    <div class="detail">
+      <strong>Balanced Fallback Path</strong>
+      <p class="muted small">${fallbackPath}</p>
+    </div>
+
+    <p id="voiceTestStatusV1121" class="muted small" style="margin-top:10px">Ready to test. If the selected pack does not exist yet, RUUT should fall back to Balanced.</p>
+
+    <audio controls playsinline preload="auto" src="${fallbackPath}" style="width:100%;margin:10px 0"></audio>
+
+    <button onclick="testVoiceCoachDirectV1121()">Test Recorded Voice</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="window.open('${fallbackPath}','_blank')">Open Balanced Fallback File</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="window.open('${selectedPath}','_blank')">Open Selected Pack File</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="hideModal()">Done</button>`);
+}
+
+function testVoiceCoachDirectV1121(){
+  const status = document.getElementById("voiceTestStatusV1121") || document.getElementById("voiceTestStatusV112") || document.getElementById("voiceCoachInlineStatusV1121");
+  const pack = voicePackLabelV114 ? voicePackLabelV114() : "Balanced";
+  const candidates = audioCandidatesV114 ? audioCandidatesV114("workout_start") : ["./audio/coach/workout_start.mp3?v=1161"];
+
+  if(status){
+    status.textContent = `Testing ${pack}. If that file is missing, RUUT will try Balanced fallback.`;
+  }
+
+  return playFirstAvailableAudioV114(candidates, "", status);
+}
+
+window.openVoiceDiagnosticV1121 = openVoiceDiagnosticV1121;
+window.testVoiceCoachDirectV1121 = testVoiceCoachDirectV1121;
+
+// Run cleanup after any Coach render, because old patched renderers can still add duplicates.
+const renderCoachV1161Base = typeof renderCoachV111 === "function" ? renderCoachV111 : null;
+if(renderCoachV1161Base){
+  renderCoachV111 = function(){
+    renderCoachV1161Base();
+    setTimeout(cleanupDuplicateVoiceButtonsV1161,50);
+  };
+  window.renderCoachV111 = renderCoachV111;
+}
+
+const renderAllV1161Base = renderAll;
+renderAll = function(){
+  renderAllV1161Base();
+  setTimeout(cleanupDuplicateVoiceButtonsV1161,80);
+  setTimeout(cleanupDuplicateVoiceButtonsV1161,250);
+};
+
+const showScreenV1161Base = showScreen;
+showScreen = function(id,btn){
+  showScreenV1161Base(id,btn);
+  if(id === "coach"){
+    setTimeout(cleanupDuplicateVoiceButtonsV1161,80);
+    setTimeout(cleanupDuplicateVoiceButtonsV1161,250);
+  }
+};
+
+// Observer catches late duplicate inserts.
+setTimeout(()=>{
+  const coach = document.getElementById("coach");
+  if(coach && !window.ruutCoachButtonCleanupObserverV1161){
+    window.ruutCoachButtonCleanupObserverV1161 = new MutationObserver(()=>cleanupDuplicateVoiceButtonsV1161());
+    window.ruutCoachButtonCleanupObserverV1161.observe(coach,{childList:true,subtree:true});
+  }
+  cleanupDuplicateVoiceButtonsV1161();
+},500);
+
 renderAll();
