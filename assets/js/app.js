@@ -5899,4 +5899,53 @@ if(renderCoachV114Base){
   };
 }
 
+
+// ---------- V11.4.1 FINAL VOICE SETTINGS OVERRIDE ----------
+openVoiceSettingsV105 = function(){
+  state.voiceCoach = state.voiceCoach || {};
+  if(!state.voiceCoach.pack) state.voiceCoach.pack = "balanced";
+  if(state.voiceCoach.enabled === undefined) state.voiceCoach.enabled = true;
+  if(state.voiceCoach.fallbackSpeech === undefined) state.voiceCoach.fallbackSpeech = true;
+
+  const vc = state.voiceCoach;
+  const pack = vc.pack || "balanced";
+
+  showModal(`<h2>Voice Coach</h2>
+    <p class="muted">Choose the coaching voice style RUUT should use.</p>
+
+    <label><input type="checkbox" id="voiceCoachEnabledV105" ${vc.enabled !== false ? "checked" : ""}> Use recorded voice files</label><br>
+    <label><input type="checkbox" id="voiceFallbackV105" ${vc.fallbackSpeech !== false ? "checked" : ""}> Fall back to phone voice if a file is missing</label>
+
+    <div style="height:12px"></div>
+    <label class="small muted">Voice Pack</label>
+    <select id="voicePackV114">
+      <option value="balanced" ${pack==="balanced" ? "selected" : ""}>Balanced</option>
+      <option value="tough" ${pack==="tough" ? "selected" : ""}>Tough Love</option>
+      <option value="trail" ${pack==="trail" ? "selected" : ""}>Trail Guide</option>
+    </select>
+
+    <p id="voiceTestStatusV112" class="muted small" style="margin-top:10px">Current pack: ${voicePackLabelV114 ? voicePackLabelV114() : pack}</p>
+
+    <div style="height:12px"></div>
+    <button onclick="saveVoiceSettingsV105()">Save Voice Settings</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="openVoiceDiagnosticV1121()">Test Voice Pack</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="hideModal()">Cancel</button>`);
+};
+
+saveVoiceSettingsV105 = function(){
+  state.voiceCoach = state.voiceCoach || {};
+  state.voiceCoach.enabled = !!document.getElementById("voiceCoachEnabledV105")?.checked;
+  state.voiceCoach.fallbackSpeech = !!document.getElementById("voiceFallbackV105")?.checked;
+  state.voiceCoach.pack = document.getElementById("voicePackV114")?.value || "balanced";
+  saveState();
+  hideModal();
+};
+
+if(typeof window !== "undefined"){
+  window.openVoiceSettingsV105 = openVoiceSettingsV105;
+  window.saveVoiceSettingsV105 = saveVoiceSettingsV105;
+}
+
 renderAll();
