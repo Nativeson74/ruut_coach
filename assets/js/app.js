@@ -4444,4 +4444,251 @@ showScreen = function(id,btn){
 
 setTimeout(renderVoiceCoachCardV105,800);
 
+
+// ---------- V11.0 CLEAN TODAY SCREEN ----------
+function formatTodayDateV110(){
+  return new Date().toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric",year:"numeric"});
+}
+
+function compactCountsV110(){
+  const hist = state.workoutHistory || [];
+  const recent = hist.slice(-7);
+  const completed = recent.filter(x => ["Completed","Modified Workout","completed"].includes(x.status)).length;
+  const missed = recent.filter(x => ["missed","skipped","Missed","Skipped"].includes(x.status)).length;
+  const recovery = recent.filter(x => x.status === "Recovery Substitution").length;
+  return {completed, missed, recovery, recent};
+}
+
+function coachDecisionV110(){
+  let title = "Keep Original Plan";
+  let summary = "Training signals do not justify rewriting today’s plan.";
+  let confidence = "Low";
+  let mode = "HOLD";
+
+  try{
+    const p = typeof dynamicPlanPreviewV102 === "function" ? dynamicPlanPreviewV102() : null;
+    if(p){
+      mode = p.activeDecision?.mode || "HOLD";
+      title = p.activeDecision?.title || title;
+      summary = p.activeDecision?.reason || summary;
+    }
+  }catch(e){}
+
+  try{
+    const c = typeof recommendationConfidenceV103 === "function" ? recommendationConfidenceV103() : null;
+    if(c?.label) confidence = c.label;
+  }catch(e){}
+
+  try{
+    const rec = typeof recoveryRecommendation === "function" ? recoveryRecommendation() : null;
+    if(rec && rec.level && rec.level !== "low"){
+      summary = `${summary} ${rec.message || ""}`.trim();
+    }
+  }catch(e){}
+
+  return {title, summary, confidence, mode};
+}
+
+function weeklySummaryV110(){
+  const counts = compactCountsV110();
+  let trend = "Consistency is building. Keep following the plan and logging debriefs.";
+  try{
+    const review = typeof weeklyCoachReviewV103 === "function" ? weeklyCoachReviewV103() : null;
+    if(review?.assessment) trend = review.assessment;
+  }catch(e){}
+  return {...counts, trend};
+}
+
+function coachProfileV110(){
+  try{
+    return typeof getCoachProfileV103 === "function" ? getCoachProfileV103() : getCoachProfileV10();
+  }catch(e){
+    return {goal:"Fat Loss",style:"Balanced",limitations:["Weak Ankles","Occasional Back Issues"]};
+  }
+}
+
+function showCoachDecisionDetailV110(){
+  const d = coachDecisionV110();
+  let details = "";
+  try{
+    const p = typeof dynamicPlanPreviewV102 === "function" ? dynamicPlanPreviewV102() : null;
+    if(p){
+      details += `<div class="detail"><strong>Dynamic Plan</strong><p class="muted">${p.activeDecision?.mode || "HOLD"} — ${p.activeDecision?.reason || ""}</p></div><div style="height:10px"></div>`;
+      details += `<div class="grid two"><div class="detail"><strong>Original</strong><p class="muted">${p.base?.title || "—"}<br>${p.base?.time || ""}</p></div><div class="detail"><strong>RUUT Plan</strong><p class="muted">${p.proposed?.title || "—"}<br>${p.proposed?.time || ""}</p></div></div><div style="height:10px"></div>`;
+    }
+  }catch(e){}
+
+  try{
+    const prog = typeof progressionSignalsV99 === "function" ? progressionSignalsV99() : null;
+    if(prog){
+      details += `<div class="detail"><strong>Adaptive Progression</strong><p class="muted">${prog.title || prog.recommendation}<br>${prog.summary || ""}</p></div><div style="height:10px"></div>`;
+    }
+  }catch(e){}
+
+  try{
+    const rec = typeof recoveryRecommendation === "function" ? recoveryRecommendation() : null;
+    if(rec){
+      details += `<div class="detail"><strong>Recovery Intelligence</strong><p class="muted">${rec.title || ""}<br>${rec.message || ""}</p></div>`;
+    }
+  }catch(e){}
+
+  showModal(`<h2>Coach Decision</h2>
+    <div class="detail"><strong>${d.title}</strong><p class="muted">${d.summary}</p></div>
+    <div style="height:10px"></div>
+    <div class="detail"><strong>Confidence</strong><p class="muted">${d.confidence}</p></div>
+    <div style="height:10px"></div>
+    ${details}
+    <div style="height:12px"></div>
+    <button onclick="hideModal()">Done</button>`);
+}
+
+function showWeeklyProgressDetailV110(){
+  const w = weeklySummaryV110();
+  showModal(`<h2>Weekly Progress</h2>
+    <div class="detail"><strong>Trend</strong><p class="muted">${w.trend}</p></div>
+    <div style="height:10px"></div>
+    <div class="grid two">
+      <div class="stat"><span class="muted small">Completed</span><strong>${w.completed}</strong></div>
+      <div class="stat"><span class="muted small">Missed/Skipped</span><strong>${w.missed}</strong></div>
+      <div class="stat"><span class="muted small">Recovery Subs</span><strong>${w.recovery}</strong></div>
+      <div class="stat"><span class="muted small">Total Logged</span><strong>${w.recent.length}</strong></div>
+    </div>
+    <div style="height:12px"></div>
+    <button onclick="hideModal()">Done</button>`);
+}
+
+function renderTodayV110(){
+  if(typeof runDailyMaintenanceV101 === "function") runDailyMaintenanceV101();
+
+  const x = currentWorkout();
+  const w = currentWeek();
+  const decision = coachDecisionV110();
+  const weekly = weeklySummaryV110();
+  const profile = coachProfileV110();
+
+  const today = document.getElementById("today");
+  today.innerHTML = `
+    <section class="card hero" id="todaysMissionV110" style="border-left:4px solid var(--accent)">
+      <div class="pill-row">
+        <span class="pill accent">Today's Mission</span>
+        <span class="pill">${formatTodayDateV110()}</span>
+      </div>
+      <div class="pill-row">
+        <span class="pill">Week ${state.week}</span>
+        <span class="pill">Day ${state.dayIndex}</span>
+        <span class="pill">${x.day}</span>
+        ${pill(x.type)}
+        <span class="pill">${settings.routeMode}</span>
+      </div>
+      <p class="muted small">${w.theme}</p>
+      <h2>${x.title}</h2>
+      <div class="grid two">
+        <div class="stat"><span class="muted small">Time</span><strong>${x.time}</strong></div>
+        <div class="stat"><span class="muted small">Target</span><strong style="font-size:17px">${x.distance}</strong></div>
+      </div>
+      <div class="grid two">
+        <button onclick="startWorkout()">Start Workout</button>
+        <button class="secondary" onclick="openBriefingV110()">Briefing</button>
+      </div>
+    </section>
+
+    <section class="card hero" id="coachDecisionV110" style="border-left:4px solid ${decision.mode === "PROGRESS" ? "var(--accent)" : decision.mode === "REDUCE" || decision.mode === "RECOVERY" ? "var(--danger)" : "var(--gold)"}">
+      <div class="pill-row">
+        <span class="pill accent">Coach Decision</span>
+        <span class="pill">${decision.mode}</span>
+        <span class="pill">Confidence: ${decision.confidence}</span>
+      </div>
+      <h3>${decision.title}</h3>
+      <p class="muted">${decision.summary}</p>
+      <button class="secondary" onclick="showCoachDecisionDetailV110()">Why?</button>
+    </section>
+
+    <section class="card hero" id="weeklyProgressV110" style="border-left:4px solid var(--accent2)">
+      <div class="pill-row"><span class="pill accent">Weekly Progress</span></div>
+      <h3>Last 7 Days</h3>
+      <p class="muted">${weekly.trend}</p>
+      <div class="grid three">
+        <div class="stat"><span class="muted small">Done</span><strong>${weekly.completed}</strong></div>
+        <div class="stat"><span class="muted small">Missed</span><strong>${weekly.missed}</strong></div>
+        <div class="stat"><span class="muted small">Recovery</span><strong>${weekly.recovery}</strong></div>
+      </div>
+      <button class="secondary" onclick="showWeeklyProgressDetailV110()">View Details</button>
+    </section>
+
+    <section class="card hero" id="coachNotesV110">
+      <div class="pill-row"><span class="pill accent">Coach Notes</span></div>
+      <h3>${profile.goal || "Goal"}</h3>
+      <p class="muted">Style: ${profile.style || "Balanced"}</p>
+      <p class="muted">Limitations: ${(profile.limitations || []).join(", ") || "None listed"}</p>
+      <button class="secondary" onclick="openCoachProfileV103 ? openCoachProfileV103() : openSettings()">Edit</button>
+    </section>
+  `;
+}
+
+function openBriefingV110(){
+  const x = currentWorkout();
+  showModal(`<h2>Workout Briefing</h2>
+    <div class="detail"><strong>Purpose</strong><p class="muted">${x.purpose || "Complete today's work."}</p></div>
+    <div style="height:10px"></div>
+    <div class="grid two">
+      <div class="detail"><strong>Best Route</strong><p class="muted">${x.terrain || "Choose a safe route."}</p></div>
+      <div class="detail"><strong>Effort</strong><p class="muted">${x.effort || "Controlled."}</p></div>
+    </div>
+    <div style="height:10px"></div>
+    <div class="detail"><strong>Structure</strong><p class="muted">${x.structure || ""}</p></div>
+    <div style="height:10px"></div>
+    <div class="grid two">
+      <div class="detail"><strong>Success</strong><p class="muted">${x.success || "Finish steady."}</p></div>
+      <div class="detail"><strong>Caution</strong><p class="muted">${x.caution || "Sharp pain means stop."}</p></div>
+    </div>
+    <div style="height:12px"></div>
+    <button onclick="hideModal()">Done</button>`);
+}
+
+// Hide developer-dashboard cards from Today. Details remain accessible through compact cards and Settings.
+function suppressOldTodayCardsV110(){
+  [
+    "readinessCardV951","coachDataModeV104","adaptiveTrainingV96","coachNotesV98",
+    "progressionCardV99","dynamicPlanV102","weeklyReviewV103","dailySystemV101",
+    "coachMemoryV10","statusLegendV103","voiceCoachV105"
+  ].forEach(id=>document.getElementById(id)?.remove());
+}
+
+// Disable delayed card renderers that older versions scheduled.
+if(typeof renderReadinessCardV951 === "function") renderReadinessCardV951 = function(){};
+if(typeof renderVoiceCoachCardV105 === "function") renderVoiceCoachCardV105 = function(){};
+if(typeof renderWeeklyReviewCardV103 === "function") renderWeeklyReviewCardV103 = function(){};
+if(typeof renderStatusLegendV103 === "function") renderStatusLegendV103 = function(){};
+if(typeof renderCoachMemoryCardV10 === "function") renderCoachMemoryCardV10 = function(){};
+if(typeof renderDynamicPlanCardV102 === "function") renderDynamicPlanCardV102 = function(){};
+if(typeof renderProgressionCardV99 === "function") renderProgressionCardV99 = function(){};
+if(typeof renderCoachNotesCardV98 === "function") renderCoachNotesCardV98 = function(){};
+
+renderToday = function(){
+  renderTodayV110();
+  setTimeout(suppressOldTodayCardsV110,50);
+};
+
+// Keep full Workout/Stats/Plan/Journal/Recover rendering untouched.
+const renderAllV110Base = renderAll;
+renderAll = function(){
+  renderToday();
+  renderWorkout();
+  renderDashboard();
+  renderPlan();
+  renderJournal();
+  renderRecover();
+  setTimeout(suppressOldTodayCardsV110,50);
+};
+
+const showScreenV110Base = showScreen;
+showScreen = function(id,btn){
+  document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+  document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));
+  if(btn) btn.classList.add("active");
+  renderAll();
+  if(id==="today") setTimeout(suppressOldTodayCardsV110,50);
+};
+
 renderAll();
