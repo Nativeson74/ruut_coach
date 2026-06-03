@@ -4982,4 +4982,242 @@ showScreen = function(id,btn){
 ensureCoachScreenV111();
 setTimeout(()=>{ensureCoachScreenV111(); renderCoachV111();},500);
 
+
+// ---------- V11.2 VOICE TEST + STATUS SUMMARY + IPHONE KEEP-AWAKE ----------
+let ruutKeepAwakeVideoV112 = null;
+let ruutKeepAwakeAudioV112 = null;
+let ruutKeepAwakeActiveV112 = false;
+
+function isIOSV112(){
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+function setAwakeV112(on,msg){
+  try{ setAwake(on,msg); }catch(e){}
+}
+
+function startKeepAwakeFallbackV112(){
+  ruutKeepAwakeActiveV112 = true;
+
+  // iPhone Safari/PWA often blocks the Screen Wake Lock API.
+  // This fallback keeps an active media session alive after a user/workout gesture.
+  try{
+    if(!ruutKeepAwakeVideoV112){
+      const video = document.createElement("video");
+      video.setAttribute("playsinline","");
+      video.setAttribute("muted","");
+      video.muted = true;
+      video.loop = true;
+      video.width = 1;
+      video.height = 1;
+      video.style.position = "fixed";
+      video.style.opacity = "0";
+      video.style.pointerEvents = "none";
+      video.style.width = "1px";
+      video.style.height = "1px";
+      video.style.left = "-10px";
+      video.style.bottom = "0";
+
+      // Tiny black mp4 data URI. Used only as an iOS keep-awake fallback.
+      video.src = "data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28ybXA0MQAAAAhmcmVlAAAAG21kYXQAAAGzABAHAAABthAAAPoAAAAAAA==";
+      document.body.appendChild(video);
+      ruutKeepAwakeVideoV112 = video;
+    }
+
+    const p = ruutKeepAwakeVideoV112.play();
+    if(p && typeof p.catch === "function"){
+      p.catch(()=>{});
+    }
+  }catch(e){}
+
+  setAwakeV112(true, isIOSV112() ? "Keep-awake fallback active" : "Screen awake active");
+}
+
+function stopKeepAwakeFallbackV112(){
+  ruutKeepAwakeActiveV112 = false;
+  try{
+    if(ruutKeepAwakeVideoV112){
+      ruutKeepAwakeVideoV112.pause();
+      ruutKeepAwakeVideoV112.currentTime = 0;
+    }
+  }catch(e){}
+}
+
+requestWakeLock = async function(){
+  if(!settings.keepAwake){
+    setAwakeV112(false,"Screen awake disabled");
+    return;
+  }
+
+  try{
+    if("wakeLock" in navigator && !isIOSV112()){
+      wakeLock = await navigator.wakeLock.request("screen");
+      setAwakeV112(true,"Screen awake active");
+      wakeLock.addEventListener("release",()=>setAwakeV112(false,"Screen awake released"));
+      return;
+    }
+
+    startKeepAwakeFallbackV112();
+  }catch(e){
+    startKeepAwakeFallbackV112();
+  }
+};
+
+releaseWakeLock = function(){
+  try{
+    if(wakeLock){
+      wakeLock.release();
+      wakeLock = null;
+    }
+  }catch(e){}
+  stopKeepAwakeFallbackV112();
+  setAwakeV112(false,"Screen awake not active");
+};
+
+function openKeepAwakeHelpV112(){
+  showModal(`<h2>Screen Keep-Awake</h2>
+    <p class="muted">iPhone Safari and Home Screen apps may block the standard Wake Lock feature.</p>
+    <p class="muted">RUUT now uses a media fallback during workouts. If iOS still locks the screen, the reliable backup is:</p>
+    <div class="detail">
+      <strong>iPhone Setting</strong>
+      <p class="muted">Settings → Display & Brightness → Auto-Lock → Never</p>
+    </div>
+    <p class="muted small">You can switch Auto-Lock back after the workout.</p>
+    <div style="height:12px"></div>
+    <button onclick="hideModal()">Done</button>`);
+}
+
+// Voice test fix: play directly from the user's tap, not through a delayed wrapper.
+function testVoiceCoachV112(){
+  const key = "coach_message";
+  const url = audioUrlV105 ? audioUrlV105(key) : "./audio/coach/coach_message.m4a";
+  const statusId = "voiceTestStatusV112";
+  const status = document.getElementById(statusId);
+
+  try{
+    stopCoachAudioV105?.();
+    const audio = new Audio(url);
+    currentCoachAudioV105 = audio;
+    audio.preload = "auto";
+    audio.volume = 1;
+
+    if(status) status.textContent = "Playing test voice...";
+
+    audio.onended = () => {
+      if(status) status.textContent = "Test finished.";
+    };
+
+    audio.onerror = () => {
+      if(status) status.textContent = "Could not play the file. Check audio/coach/coach_message.m4a.";
+      if(state.voiceCoach?.fallbackSpeech) speak("Voice file could not play.");
+    };
+
+    const p = audio.play();
+    if(p && typeof p.catch === "function"){
+      p.catch(err=>{
+        if(status) status.textContent = "iPhone blocked playback. Tap Test Recorded Voice again.";
+        if(state.voiceCoach?.fallbackSpeech) speak("Tap test again to unlock audio.");
+      });
+    }
+  }catch(e){
+    if(status) status.textContent = "Voice test failed.";
+    if(state.voiceCoach?.fallbackSpeech) speak("Voice test failed.");
+  }
+}
+
+testVoiceCoachV105 = testVoiceCoachV112;
+
+openVoiceSettingsV105 = function(){
+  const vc = state.voiceCoach || {enabled:true,fallbackSpeech:true};
+  showModal(`<h2>Voice Coach</h2>
+    <p class="muted">Use your recorded voice files for workout coaching.</p>
+    <label><input type="checkbox" id="voiceCoachEnabledV105" ${vc.enabled ? "checked" : ""}> Use recorded voice files</label><br>
+    <label><input type="checkbox" id="voiceFallbackV105" ${vc.fallbackSpeech ? "checked" : ""}> Fall back to phone voice if a file is missing</label>
+    <p id="voiceTestStatusV112" class="muted small" style="margin-top:10px">Ready to test.</p>
+    <div style="height:12px"></div>
+    <button onclick="saveVoiceSettingsV105()">Save Voice Settings</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="testVoiceCoachV112()">Test Recorded Voice</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="hideModal()">Cancel</button>`);
+};
+
+// Replace the static status explanation with an actual status summary.
+function workoutStatusSummaryV112(){
+  const hist = (state.workoutHistory || []).slice(-14);
+  const counts = {};
+  hist.forEach(x=>{
+    const s = x.status || "Unknown";
+    counts[s] = (counts[s] || 0) + 1;
+  });
+  return {hist, counts};
+}
+
+function showWorkoutStatusDetailV112(){
+  const s = workoutStatusSummaryV112();
+  const rows = s.hist.slice().reverse().map(x=>`
+    <div class="row" style="align-items:flex-start">
+      <div>
+        <strong>${x.date || ""}</strong>
+        <p class="muted small">${x.status || "Unknown"} — ${x.title || "Workout"}</p>
+      </div>
+    </div>
+  `).join("");
+
+  showModal(`<h2>Workout Status History</h2>
+    <div class="grid two">
+      ${Object.keys(s.counts).length ? Object.entries(s.counts).map(([k,v])=>`
+        <div class="stat"><span class="muted small">${k}</span><strong>${v}</strong></div>
+      `).join("") : `<p class="muted">No workout status history yet.</p>`}
+    </div>
+    <div style="height:12px"></div>
+    <h3>Recent Statuses</h3>
+    <div class="list">${rows || `<p class="muted">No history yet.</p>`}</div>
+    <div style="height:12px"></div>
+    <button onclick="hideModal()">Done</button>`);
+}
+
+function coachTabStatusCardV111(){
+  const s = workoutStatusSummaryV112();
+  const completed = (s.counts.Completed || 0) + (s.counts.completed || 0);
+  const modified = s.counts["Modified Workout"] || 0;
+  const recovery = s.counts["Recovery Substitution"] || 0;
+  const missed = (s.counts.missed || 0) + (s.counts.skipped || 0) + (s.counts.Missed || 0) + (s.counts.Skipped || 0);
+
+  return `<section class="card hero">
+    <div class="pill-row"><span class="pill accent">Workout Status Summary</span></div>
+    <h3>Last 14 Logged Days</h3>
+    <div class="grid two">
+      <div class="stat"><span class="muted small">Completed</span><strong>${completed}</strong></div>
+      <div class="stat"><span class="muted small">Modified</span><strong>${modified}</strong></div>
+      <div class="stat"><span class="muted small">Recovery Subs</span><strong>${recovery}</strong></div>
+      <div class="stat"><span class="muted small">Missed/Skipped</span><strong>${missed}</strong></div>
+    </div>
+    <p class="muted small">These statuses feed RUUT's coach logic.</p>
+    <button class="secondary" onclick="showWorkoutStatusDetailV112()">View Status History</button>
+  </section>`;
+}
+
+// Add keep-awake help to workout screen.
+const renderWorkoutV112Base = renderWorkout;
+renderWorkout = function(){
+  renderWorkoutV112Base();
+  const section = document.querySelector("#workout section");
+  if(section && !document.getElementById("keepAwakeHelpV112")){
+    const help = document.createElement("button");
+    help.id = "keepAwakeHelpV112";
+    help.className = "secondary";
+    help.textContent = "Screen Keep-Awake Help";
+    help.onclick = openKeepAwakeHelpV112;
+    section.appendChild(help);
+  }
+};
+
+// At workout start, activate fallback immediately from the user gesture chain.
+const startWorkoutV112Base = startWorkout;
+startWorkout = function(){
+  startKeepAwakeFallbackV112();
+  return startWorkoutV112Base();
+};
+
 renderAll();
