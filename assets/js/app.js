@@ -7363,4 +7363,395 @@ async function finishWorkout(){
 }
 window.finishWorkout = finishWorkout;
 
+
+// ---------- V12.0.3 NON-BLOCKING RECORDED VOICE FLOW ----------
+// Recorded MP3s should behave like the old fallback voice:
+// start the screen/timer immediately, play audio in the background, and stop instantly on skip.
+
+let ruutVoiceGateV1203 = {
+  lastKey:"",
+  lastAt:0,
+  halfwayArmed:false,
+  workoutStarted:false
+};
+
+function ruutStopAllAudioV1203(){
+  try{
+    if(ruutAudioV120){
+      ruutAudioV120.pause();
+      ruutAudioV120.currentTime = 0;
+    }
+  }catch(e){}
+  try{
+    if(currentCoachAudioV105){
+      currentCoachAudioV105.pause();
+      currentCoachAudioV105.currentTime = 0;
+    }
+  }catch(e){}
+  try{
+    if(window.speechSynthesis) window.speechSynthesis.cancel();
+  }catch(e){}
+}
+
+function ruutPlayVoiceNowV1203(key,statusEl=null){
+  const now = Date.now();
+  if(ruutVoiceGateV1203.lastKey === key && now - ruutVoiceGateV1203.lastAt < 2500){
+    if(statusEl) statusEl.textContent = "Duplicate cue ignored.";
+    return false;
+  }
+
+  ruutVoiceGateV1203.lastKey = key;
+  ruutVoiceGateV1203.lastAt = now;
+
+  const candidates = ruutVoiceCandidatesV120 ? ruutVoiceCandidatesV120(key) : [`./audio/coach/${key}.mp3?v=1203`];
+  let i = 0;
+
+  const tryNext = () => {
+    if(i >= candidates.length){
+      if(statusEl) statusEl.textContent = "Recorded MP3 not found.";
+      return;
+    }
+
+    const url = candidates[i++];
+
+    try{
+      ruutStopAllAudioV1203();
+
+      const audio = new Audio(url);
+      ruutAudioV120 = audio;
+      currentCoachAudioV105 = audio;
+      audio.preload = "auto";
+      audio.volume = 1;
+
+      if(statusEl) statusEl.textContent = `Trying: ${url}`;
+
+      audio.onplaying = () => {
+        if(statusEl) statusEl.textContent = "Playing recorded voice.";
+      };
+      audio.onended = () => {
+        if(statusEl) statusEl.textContent = "Finished.";
+      };
+      audio.onerror = () => tryNext();
+
+      const p = audio.play();
+      if(p && typeof p.catch === "function"){
+        p.catch(() => tryNext());
+      }
+    }catch(e){
+      tryNext();
+    }
+  };
+
+  tryNext();
+  return true;
+}
+
+// Compatibility: never await recorded audio in workout flow.
+function ruutPlayVoiceV120(key,statusEl=null){
+  ruutPlayVoiceNowV1203(key,statusEl);
+  return Promise.resolve(true);
+}
+function ruutPlayCandidatesV120(candidates,statusEl=null){
+  // Used by test panels. For tests, still play non-blocking but return resolved.
+  let i = 0;
+  const tryNext = () => {
+    if(i >= candidates.length){
+      if(statusEl) statusEl.textContent = "Recorded MP3 not found.";
+      return;
+    }
+    const url = candidates[i++];
+    try{
+      ruutStopAllAudioV1203();
+      const audio = new Audio(url);
+      ruutAudioV120 = audio;
+      currentCoachAudioV105 = audio;
+      audio.preload = "auto";
+      audio.volume = 1;
+      if(statusEl) statusEl.textContent = `Trying: ${url}`;
+      audio.onplaying = ()=>{ if(statusEl) statusEl.textContent = "Playing recorded voice."; };
+      audio.onended = ()=>{ if(statusEl) statusEl.textContent = "Finished."; };
+      audio.onerror = ()=>tryNext();
+      const p = audio.play();
+      if(p && typeof p.catch === "function") p.catch(()=>tryNext());
+    }catch(e){ tryNext(); }
+  };
+  tryNext();
+  return Promise.resolve(true);
+}
+function playCoachAudioV105(key){ ruutPlayVoiceNowV1203(key); return Promise.resolve(true); }
+async function coachCueV105(key){ ruutPlayVoiceNowV1203(key); return true; }
+async function cue(text){
+  const lower = String(text || "").toLowerCase();
+  let key = null;
+  if(lower.includes("warm")) key = "warmup_start";
+  else if(lower.includes("cooldown")) key = "cooldown_start";
+  else if(lower.includes("workout complete") || lower.includes("complete")) key = "workout_complete";
+  else if(lower.includes("half") || lower.includes("turn back")) key = "halfway";
+  else if(lower.includes("rest day")) key = "rest_day";
+  else if(lower.includes("run")) key = "run_start";
+  else if(lower.includes("walk") || lower.includes("recover")) key = "walk_recovery";
+  if(key) ruutPlayVoiceNowV1203(key);
+  return true;
+}
+function speak(text){ return Promise.resolve(); }
+
+window.ruutPlayVoiceV120 = ruutPlayVoiceV120;
+window.ruutPlayCandidatesV120 = ruutPlayCandidatesV120;
+window.playCoachAudioV105 = playCoachAudioV105;
+window.coachCueV105 = coachCueV105;
+window.cue = cue;
+window.speak = speak;
+
+// Start workout should render cockpit immediately and move into warmup immediately.
+// No pre-workout audio gate.
+startWorkout = function(){
+  ruutStopAllAudioV1203();
+  ruutVoiceGateV1203 = {lastKey:"",lastAt:0,halfwayArmed:false,workoutStarted:true};
+
+  workoutAbort = false;
+  skipCurrentTimer = false;
+  workoutPaused = false;
+
+  beginWorkout("normal");
+};
+window.startWorkout = startWorkout;
+
+async function beginWorkout(readiness){
+  stopWorkout(false);
+  workoutAbort = false;
+  skipCurrentTimer = false;
+  workoutPaused = false;
+
+  const x = currentWorkout();
+
+  document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+  document.getElementById("workout").classList.add("active");
+  document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));
+  const navBtns = document.querySelectorAll("nav button");
+  if(navBtns[1]) navBtns[1].classList.add("active");
+
+  renderWorkout();
+  requestWakeLock();
+
+  // Fire and continue. Do not await.
+  ruutPlayVoiceNowV1203("workout_start");
+
+  if(readiness === "back"){
+    setCue("Walk Only");
+    setTimer("EASY");
+    setWorkoutMessage("Back tight fallback: easy walk and mobility. Do not force the plan.");
+    ruutPlayVoiceNowV1203("recovery_substitution");
+    return;
+  }
+
+  if(x.type === "run") return startRun(x,readiness);
+  if(x.type === "bodyweight") return startStrengthV1203(x,readiness);
+  return startRest(x);
+}
+window.beginWorkout = beginWorkout;
+
+async function warmup(){
+  if(!settings.warmup) return;
+  ruutStopAllAudioV1203();
+
+  setCue("Warmup");
+  setTimer("2:00");
+  setWorkoutMessage("Warmup: march, leg swings, calf raises, easy movement. Tap Skip Current Step to move ahead.");
+
+  // Fire and continue. Timer starts immediately.
+  ruutPlayVoiceNowV1203("warmup_start");
+
+  await timer(120,120,120);
+}
+window.warmup = warmup;
+
+async function cooldown(){
+  ruutStopAllAudioV1203();
+
+  setCue("Cooldown");
+  setWorkoutMessage("Cooldown: easy walk, calves, hips, hamstrings. Tap Skip Current Step to finish.");
+
+  // Fire and continue. Timer starts immediately.
+  ruutPlayVoiceNowV1203("cooldown_start");
+
+  await timer(180,180,180);
+}
+window.cooldown = cooldown;
+
+async function runSegment(label,seconds,remaining,total){
+  ruutStopAllAudioV1203();
+  skipCurrentTimer = false;
+
+  setCue(label.toUpperCase());
+  setWorkoutMessage(label === "Run" ? "Stay controlled. Smooth is fast." : "Recover. Keep moving.");
+
+  // Fire and continue. Timer starts immediately.
+  ruutPlayVoiceNowV1203(label === "Run" ? "run_start" : "walk_recovery");
+
+  await timer(seconds,remaining,total);
+}
+window.runSegment = runSegment;
+
+function showHalfway(){
+  // Hard guard: never fire unless startRun explicitly arms it.
+  if(!ruutVoiceGateV1203.halfwayArmed) return;
+
+  ruutStopAllAudioV1203();
+  setCue("TURN BACK");
+  setWorkoutMessage("Halfway point. Turn back now.");
+  ruutPlayVoiceNowV1203("halfway");
+}
+window.showHalfway = showHalfway;
+
+async function startRun(x,readiness){
+  let total = x.total * 60;
+  if(readiness === "tired") total = Math.round(total * .8);
+
+  let remaining = total;
+  const half = Math.floor(total / 2);
+  let halfSpoken = false;
+
+  setCue("Warmup");
+  setWorkoutMessage("Warm up first. Then follow the run/walk cues.");
+
+  ruutVoiceGateV1203.halfwayArmed = false;
+
+  if(settings.warmup) await warmup();
+  if(workoutAbort) return;
+
+  // Only arm halfway after warmup is fully done or intentionally skipped.
+  // But do not play halfway until after at least one timed work segment has completed.
+  let workSegmentsCompleted = 0;
+
+  while(remaining > 0 && !workoutAbort){
+    const runDur = Math.min(x.runSeconds, remaining);
+    await runSegment("Run", runDur, remaining, total);
+    if(workoutAbort) return;
+    remaining -= runDur;
+    workSegmentsCompleted++;
+
+    if(!halfSpoken && workSegmentsCompleted > 0 && remaining <= half){
+      halfSpoken = true;
+      ruutVoiceGateV1203.halfwayArmed = true;
+      showHalfway();
+      ruutVoiceGateV1203.halfwayArmed = false;
+    }
+
+    if(remaining <= 0) break;
+
+    const walkDur = Math.min(x.walkSeconds, remaining);
+    await runSegment("Walk", walkDur, remaining, total);
+    if(workoutAbort) return;
+    remaining -= walkDur;
+    workSegmentsCompleted++;
+
+    if(!halfSpoken && workSegmentsCompleted > 0 && remaining <= half){
+      halfSpoken = true;
+      ruutVoiceGateV1203.halfwayArmed = true;
+      showHalfway();
+      ruutVoiceGateV1203.halfwayArmed = false;
+    }
+  }
+
+  if(settings.cooldown) await cooldown();
+  if(workoutAbort) return;
+  await finishWorkout();
+}
+window.startRun = startRun;
+
+async function startStrengthV1203(x,readiness){
+  setCue("Warmup");
+  if(settings.warmup) await warmup();
+  if(workoutAbort) return;
+
+  let rounds = x.rounds;
+  if(readiness === "tired") rounds = Math.max(1,rounds-1);
+
+  ruutPlayVoiceNowV1203("strength_begin");
+
+  for(let r=1;r<=rounds && !workoutAbort;r++){
+    setCue(`Round ${r}`);
+    for(const e of x.exercises){
+      if(workoutAbort) return;
+      ruutStopAllAudioV1203();
+      setCue(e.name);
+      ruutPlayVoiceNowV1203("next_exercise");
+
+      if(e.mode === "timed"){
+        setWorkoutMessage(`${e.name}. ${e.seconds} seconds.`);
+        await timer(e.seconds,e.seconds,e.seconds);
+      }else{
+        setTimer("DONE?");
+        setWorkoutMessage(`${e.name}. ${e.reps}. Tap Done when finished.`);
+        await waitForDone(e.name,e.reps);
+      }
+    }
+  }
+
+  if(settings.cooldown) await cooldown();
+  if(workoutAbort) return;
+  await finishWorkout();
+}
+window.startStrength = startStrengthV1203;
+
+function startRest(x){
+  ruutStopAllAudioV1203();
+  setWorkoutMessage("Rest day. Light walking only.");
+  setCue("Rest Day");
+  setTimer("REST");
+  ruutPlayVoiceNowV1203("rest_day");
+}
+window.startRest = startRest;
+
+async function finishWorkout(){
+  ruutStopAllAudioV1203();
+  setCue("Complete");
+  setTimer("DONE");
+  setWorkoutMessage("Workout complete. Good work.");
+  ruutPlayVoiceNowV1203("workout_complete");
+  markComplete(false);
+  releaseWakeLock();
+  if(typeof openWorkoutDebriefV97 === "function"){
+    openWorkoutDebriefV97();
+  }else{
+    showModal(`<h2>Workout Complete</h2><button onclick="hideModal()">Done</button>`);
+  }
+}
+window.finishWorkout = finishWorkout;
+
+// Skip and Pause must immediately cut active recorded audio and should not trigger halfway.
+skipCurrent = function(){
+  ruutStopAllAudioV1203();
+  skipCurrentTimer = true;
+  workoutPaused = false;
+  ruutVoiceGateV1203.halfwayArmed = false;
+
+  updatePauseButton();
+  setCue("Next");
+  setTimer("NEXT");
+  setWorkoutMessage("Moving to the next step...");
+
+  if(activeTimerResolve) activeTimerResolve();
+  if(window.resolveDone){
+    try{ window.resolveDone(); }catch(e){}
+  }
+};
+window.skipCurrent = skipCurrent;
+
+togglePause = function(){
+  ruutStopAllAudioV1203();
+  workoutPaused = !workoutPaused;
+
+  if(workoutPaused){
+    setCue("Paused");
+    setWorkoutMessage("Paused. Tap Resume to continue from here.");
+  }else{
+    setCue("Resume");
+    setWorkoutMessage("Resuming workout.");
+  }
+
+  updatePauseButton();
+};
+window.togglePause = togglePause;
+
 renderAll();
