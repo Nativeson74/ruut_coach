@@ -6479,4 +6479,371 @@ setTimeout(()=>{
   cleanupDuplicateVoiceButtonsV1161();
 },500);
 
+
+// ---------- V12.0 CLEAN MP3 VOICE SYSTEM ----------
+const RUUT_VOICE_FILES_V120 = {
+  workout_start:"workout_start.mp3",
+  warmup_start:"warmup_start.mp3",
+  run_start:"run_start.mp3",
+  walk_recovery:"walk_recovery.mp3",
+  interval_start:"interval_start.mp3",
+  halfway:"halfway.mp3",
+  one_minute_left:"one_minute_left.mp3",
+  cooldown_start:"cooldown_start.mp3",
+  workout_complete:"workout_complete.mp3",
+  easy_day:"easy_day.mp3",
+  progression_day:"progression_day.mp3",
+  reduced_day:"reduced_day.mp3",
+  recovery_substitution:"recovery_substitution.mp3",
+  missed_workout:"missed_workout.mp3",
+  weekly_review_good:"weekly_review_good.mp3",
+  weekly_review_neutral:"weekly_review_neutral.mp3",
+  weekly_review_warning:"weekly_review_warning.mp3",
+  great_job:"great_job.mp3",
+  rest_day:"rest_day.mp3",
+  coach_message:"coach_message.mp3"
+};
+
+const RUUT_BRIEFING_FILES_V120 = {
+  easy_day:"easy_day.mp3",
+  intervals:"intervals.mp3",
+  long_run:"long_run.mp3",
+  recovery:"recovery.mp3",
+  strength:"strength.mp3",
+  progression:"progression.mp3",
+  reduced:"reduced.mp3"
+};
+
+let ruutAudioV120 = null;
+
+function ruutCoachStyleKeyV120(){
+  const s = String(settings.coachStyle || "balanced").toLowerCase();
+  if(s.includes("tough")) return "tough";
+  if(s.includes("trail")) return "trail";
+  return "balanced";
+}
+
+function ruutCoachStyleLabelV120(){
+  const s = ruutCoachStyleKeyV120();
+  if(s === "tough") return "Tough Love";
+  if(s === "trail") return "Trail Guide";
+  return "Balanced";
+}
+
+function ruutVoiceBaseV120(style=ruutCoachStyleKeyV120()){
+  if(style === "tough") return "./audio/coach/tough/";
+  if(style === "trail") return "./audio/coach/trail/";
+  return "./audio/coach/";
+}
+
+function ruutBriefingBaseV120(style=ruutCoachStyleKeyV120()){
+  if(style === "tough") return "./audio/coach/tough/briefings/";
+  if(style === "trail") return "./audio/coach/trail/briefings/";
+  return "./audio/coach/briefings/";
+}
+
+function ruutVoiceCandidatesV120(key){
+  const file = RUUT_VOICE_FILES_V120[key] || `${key}.mp3`;
+  const style = ruutCoachStyleKeyV120();
+  const out = [];
+
+  if(style !== "balanced"){
+    out.push(`${ruutVoiceBaseV120(style)}${file}?v=120`);
+  }
+
+  out.push(`./audio/coach/${file}?v=120`);
+  return [...new Set(out)];
+}
+
+function ruutBriefingCandidatesV120(kind){
+  const file = RUUT_BRIEFING_FILES_V120[kind] || `${kind}.mp3`;
+  const style = ruutCoachStyleKeyV120();
+  const out = [];
+
+  if(style !== "balanced"){
+    out.push(`${ruutBriefingBaseV120(style)}${file}?v=120`);
+    out.push(`${ruutVoiceBaseV120(style)}briefing_${file}?v=120`);
+  }
+
+  out.push(`./audio/coach/briefings/${file}?v=120`);
+  return [...new Set(out)];
+}
+
+function ruutStopAudioV120(){
+  try{
+    if(ruutAudioV120){
+      ruutAudioV120.pause();
+      ruutAudioV120.currentTime = 0;
+    }
+  }catch(e){}
+  try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
+}
+
+function ruutPlayCandidatesV120(candidates,statusEl=null){
+  return new Promise(resolve=>{
+    let index = 0;
+
+    const tryOne = () => {
+      if(index >= candidates.length){
+        if(statusEl) statusEl.textContent = "Recorded MP3 not found.";
+        resolve(false);
+        return;
+      }
+
+      const url = candidates[index++];
+
+      try{
+        ruutStopAudioV120();
+        const audio = new Audio(url);
+        ruutAudioV120 = audio;
+        audio.preload = "auto";
+        audio.volume = 1;
+
+        if(statusEl) statusEl.textContent = `Trying: ${url}`;
+
+        audio.onplaying = ()=>{ if(statusEl) statusEl.textContent = "Playing recorded voice."; };
+        audio.onended = ()=>{ if(statusEl) statusEl.textContent = "Finished."; resolve(true); };
+        audio.onerror = ()=>tryOne();
+
+        const p = audio.play();
+        if(p && typeof p.catch === "function"){
+          p.catch(()=>tryOne());
+        }
+      }catch(e){
+        tryOne();
+      }
+    };
+
+    tryOne();
+  });
+}
+
+function ruutPlayVoiceV120(key,statusEl=null){
+  if(state.voiceCoach?.enabled === false){
+    if(statusEl) statusEl.textContent = "Recorded voice disabled.";
+    return Promise.resolve(false);
+  }
+  return ruutPlayCandidatesV120(ruutVoiceCandidatesV120(key),statusEl);
+}
+
+function ruutPlayBriefingV120(kind,statusEl=null){
+  if(state.voiceCoach?.enabled === false){
+    if(statusEl) statusEl.textContent = "Recorded voice disabled.";
+    return Promise.resolve(false);
+  }
+  return ruutPlayCandidatesV120(ruutBriefingCandidatesV120(kind),statusEl);
+}
+
+// Hard remove phone/Siri voice from coaching.
+function speak(text){ return Promise.resolve(); }
+async function cue(text){
+  const lower = String(text || "").toLowerCase();
+  let key = null;
+
+  if(lower.includes("workout complete") || lower.includes("complete")) key = "workout_complete";
+  else if(lower.includes("cooldown")) key = "cooldown_start";
+  else if(lower.includes("warm")) key = "warmup_start";
+  else if(lower.includes("half")) key = "halfway";
+  else if(lower.includes("run")) key = "run_start";
+  else if(lower.includes("walk") || lower.includes("recover")) key = "walk_recovery";
+  else if(lower.includes("rest day")) key = "rest_day";
+  else if(lower.includes("recovery")) key = "recovery_substitution";
+
+  if(key) return ruutPlayVoiceV120(key);
+  return Promise.resolve(false);
+}
+window.speak = speak;
+window.cue = cue;
+
+// Compatibility shims for older code paths.
+function playCoachAudioV105(key){ return ruutPlayVoiceV120(key); }
+async function coachCueV105(key){ return ruutPlayVoiceV120(key); }
+function playBriefingAudioV113(kind){ return ruutPlayBriefingV120(kind, document.getElementById("briefingAudioStatusV113")); }
+function testVoiceCoachDirectV1121(){ return ruutPlayVoiceV120("workout_start", document.getElementById("voiceTestStatusV120") || document.getElementById("voiceCoachInlineStatusV1121")); }
+
+window.playCoachAudioV105 = playCoachAudioV105;
+window.coachCueV105 = coachCueV105;
+window.playBriefingAudioV113 = playBriefingAudioV113;
+window.testVoiceCoachDirectV1121 = testVoiceCoachDirectV1121;
+
+function openVoiceSettingsV105(){
+  state.voiceCoach = state.voiceCoach || {};
+  if(state.voiceCoach.enabled === undefined) state.voiceCoach.enabled = true;
+
+  showModal(`<h2>Voice Coach</h2>
+    <p class="muted">RUUT uses MP3 recordings only. Voice style follows Coach Style.</p>
+
+    <div class="detail">
+      <strong>Active Coach Style</strong>
+      <p class="muted">${ruutCoachStyleLabelV120()}</p>
+      <p class="muted small">Change this from Settings → Coach Style.</p>
+    </div>
+
+    <div style="height:10px"></div>
+    <label><input type="checkbox" id="voiceCoachEnabledV120" ${state.voiceCoach.enabled !== false ? "checked" : ""}> Use recorded voice files</label>
+
+    <p class="muted small" style="margin-top:10px">No iPhone voice fallback. Missing recordings stay silent.</p>
+
+    <div style="height:12px"></div>
+    <button onclick="saveVoiceSettingsV105()">Save Voice Settings</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="openVoiceDiagnosticV1121()">Test Voice</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="hideModal()">Cancel</button>`);
+}
+
+function saveVoiceSettingsV105(){
+  state.voiceCoach = state.voiceCoach || {};
+  state.voiceCoach.enabled = !!document.getElementById("voiceCoachEnabledV120")?.checked;
+  state.voiceCoach.fallbackSpeech = false;
+  state.voiceCoach.pack = ruutCoachStyleKeyV120();
+  saveState();
+  hideModal();
+}
+
+function openVoiceDiagnosticV1121(){
+  const candidates = ruutVoiceCandidatesV120("workout_start");
+  const selected = candidates[0];
+  const fallback = candidates[candidates.length-1];
+
+  showModal(`<h2>Voice Coach Test</h2>
+    <p class="muted">Testing MP3 recordings for <strong>${ruutCoachStyleLabelV120()}</strong>.</p>
+
+    <div class="detail">
+      <strong>Selected Path</strong>
+      <p class="muted small">${selected}</p>
+    </div>
+
+    <div style="height:8px"></div>
+    <div class="detail">
+      <strong>Balanced Fallback</strong>
+      <p class="muted small">${fallback}</p>
+    </div>
+
+    <p id="voiceTestStatusV120" class="muted small" style="margin-top:10px">Ready.</p>
+    <audio controls playsinline preload="auto" src="${fallback}" style="width:100%;margin:10px 0"></audio>
+
+    <button onclick="testVoiceCoachDirectV1121()">Test Voice</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="window.open('${fallback}','_blank')">Open Balanced Fallback</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="window.open('${selected}','_blank')">Open Selected Path</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="hideModal()">Done</button>`);
+}
+
+window.openVoiceSettingsV105 = openVoiceSettingsV105;
+window.saveVoiceSettingsV105 = saveVoiceSettingsV105;
+window.openVoiceDiagnosticV1121 = openVoiceDiagnosticV1121;
+
+function openBriefingAudioTestV113(){
+  const kinds = ["easy_day","intervals","long_run","recovery","strength","progression","reduced"];
+  showModal(`<h2>Briefing Audio Test</h2>
+    <p class="muted">Testing MP3 briefings for <strong>${ruutCoachStyleLabelV120()}</strong>.</p>
+    <div class="list">
+      ${kinds.map(k=>`
+        <div class="row">
+          <div><strong>${briefingTitleV113 ? briefingTitleV113(k) : k}</strong><p class="muted small">${(ruutBriefingCandidatesV120(k).slice(-1)[0] || "")}</p></div>
+          <button class="secondary" onclick="ruutPlayBriefingV120('${k}',document.getElementById('briefingAudioStatusV113'))">Play</button>
+        </div>
+      `).join("")}
+    </div>
+    <p id="briefingAudioStatusV113" class="muted small" style="margin-top:10px">Ready.</p>
+    <div style="height:12px"></div>
+    <button onclick="hideModal()">Done</button>`);
+}
+window.openBriefingAudioTestV113 = openBriefingAudioTestV113;
+window.ruutPlayBriefingV120 = ruutPlayBriefingV120;
+
+// Rebuild briefing modal using clean voice engine.
+function openBriefingV110(){
+  const x = currentWorkout();
+  const kind = classifyBriefingV113 ? classifyBriefingV113(x) : "easy_day";
+  const title = briefingTitleV113 ? briefingTitleV113(kind) : "Workout Briefing";
+
+  showModal(`<h2>Workout Briefing</h2>
+    <div class="pill-row"><span class="pill accent">${title}</span><span class="pill">${ruutCoachStyleLabelV120()}</span></div>
+
+    <div class="detail"><strong>Today's Goal</strong><p class="muted">${briefingGoalV113 ? briefingGoalV113(kind) : "Complete today's workout with control."}</p></div>
+    <div style="height:10px"></div>
+
+    <div class="detail"><strong>Success Looks Like</strong><p class="muted">${briefingSuccessV113 ? briefingSuccessV113(kind) : "You complete the planned work."}</p></div>
+    <div style="height:10px"></div>
+
+    <div class="detail"><strong>Coach Notes</strong><p class="muted">${briefingCoachNotesV113 ? briefingCoachNotesV113(kind) : "Stay disciplined."}</p></div>
+    <div style="height:10px"></div>
+
+    <p id="briefingAudioStatusV113" class="muted small">Ready to play briefing.</p>
+    <audio controls playsinline preload="auto" src="${ruutBriefingCandidatesV120(kind).slice(-1)[0]}" style="width:100%;margin:10px 0"></audio>
+
+    <button onclick="ruutPlayBriefingV120('${kind}',document.getElementById('briefingAudioStatusV113'))">Play Briefing</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="hideModal();startWorkout()">Start Workout</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="hideModal()">Done</button>`);
+}
+window.openBriefingV110 = openBriefingV110;
+
+// Final workout cue overrides.
+if(typeof timer === "function"){
+  runSegment = async function(label,seconds,remaining,total){
+    setCue(label.toUpperCase());
+    setWorkoutMessage(label==="Run" ? "Stay controlled. Smooth is fast." : "Recover. Keep moving.");
+    await ruutPlayVoiceV120(label==="Run" ? "run_start" : "walk_recovery");
+    await timer(seconds,remaining,total);
+  };
+  window.runSegment = runSegment;
+}
+
+// Override old start/finish wrappers just enough to force clean audio.
+const startWorkoutV120Base = startWorkout;
+startWorkout = function(){
+  state.voiceCoach = state.voiceCoach || {};
+  state.voiceCoach.pack = ruutCoachStyleKeyV120();
+  state.voiceCoach.fallbackSpeech = false;
+  return startWorkoutV120Base();
+};
+window.startWorkout = startWorkout;
+
+function coachTabVoiceCardV111(){
+  const enabled = state.voiceCoach?.enabled !== false;
+  return `<section class="card hero">
+    <div class="pill-row"><span class="pill accent">Voice Coach</span><span class="pill">${enabled ? "Enabled" : "Disabled"}</span><span class="pill">${ruutCoachStyleLabelV120()}</span></div>
+    <h3>Recorded MP3 Voice Files</h3>
+    <p class="muted">RUUT uses one clean MP3 voice engine. Coach Style controls the voice folder. Missing files stay silent.</p>
+    <p id="voiceCoachInlineStatusV1121" class="muted small">Voice test ready.</p>
+    <div class="grid two">
+      <button class="secondary" onclick="openVoiceSettingsV105()">Voice Settings</button>
+      <button class="secondary" onclick="openVoiceDiagnosticV1121()">Test Voice</button>
+    </div>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="openBriefingAudioTestV113()">Test Briefing Audio</button>
+  </section>`;
+}
+window.coachTabVoiceCardV111 = coachTabVoiceCardV111;
+
+// Remove duplicate briefing buttons, if old card builders still run.
+function cleanupVoiceButtonsV120(){
+  const coach = document.getElementById("coach");
+  if(!coach) return;
+  const buttons = Array.from(coach.querySelectorAll("button")).filter(b => (b.textContent || "").trim() === "Test Briefing Audio");
+  buttons.forEach((b,i)=>{ if(i>0) b.remove(); });
+}
+const renderAllV120Base = renderAll;
+renderAll = function(){
+  state.voiceCoach = state.voiceCoach || {};
+  state.voiceCoach.pack = ruutCoachStyleKeyV120();
+  state.voiceCoach.fallbackSpeech = false;
+  renderAllV120Base();
+  setTimeout(cleanupVoiceButtonsV120,100);
+};
+const showScreenV120Base = showScreen;
+showScreen = function(id,btn){
+  state.voiceCoach = state.voiceCoach || {};
+  state.voiceCoach.pack = ruutCoachStyleKeyV120();
+  state.voiceCoach.fallbackSpeech = false;
+  showScreenV120Base(id,btn);
+  if(id==="coach") setTimeout(cleanupVoiceButtonsV120,100);
+};
+
 renderAll();
