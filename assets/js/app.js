@@ -4691,4 +4691,113 @@ showScreen = function(id,btn){
   if(id==="today") setTimeout(suppressOldTodayCardsV110,50);
 };
 
+
+// ---------- V11.0.1 TODAY SCREEN LOCK ----------
+function lockTodayScreenV1101(){
+  const today = document.getElementById("today");
+  if(!today || !today.classList.contains("active")) return;
+
+  const allowed = new Set([
+    "todaysMissionV110",
+    "coachDecisionV110",
+    "weeklyProgressV110",
+    "coachNotesV110"
+  ]);
+
+  Array.from(today.children).forEach(child=>{
+    if(!allowed.has(child.id)){
+      child.remove();
+    }
+  });
+
+  const mission = document.getElementById("todaysMissionV110");
+  if(mission && today.firstElementChild !== mission){
+    today.insertBefore(mission, today.firstElementChild);
+  }
+
+  const decision = document.getElementById("coachDecisionV110");
+  const weekly = document.getElementById("weeklyProgressV110");
+  const notes = document.getElementById("coachNotesV110");
+
+  if(mission && decision && mission.nextElementSibling !== decision){
+    mission.insertAdjacentElement("afterend", decision);
+  }
+  if(decision && weekly && decision.nextElementSibling !== weekly){
+    decision.insertAdjacentElement("afterend", weekly);
+  }
+  if(weekly && notes && weekly.nextElementSibling !== notes){
+    weekly.insertAdjacentElement("afterend", notes);
+  }
+}
+
+// Override old delayed renderers again, after every previous version has loaded.
+[
+  "renderReadinessCardV951",
+  "renderVoiceCoachCardV105",
+  "renderWeeklyReviewCardV103",
+  "renderStatusLegendV103",
+  "renderCoachMemoryCardV10",
+  "renderDynamicPlanCardV102",
+  "renderProgressionCardV99",
+  "renderCoachNotesCardV98",
+  "renderReadinessCardV951",
+  "renderCoachNotesCardV98"
+].forEach(name=>{
+  try{
+    if(typeof window !== "undefined" && typeof window[name] === "function"){
+      window[name] = function(){};
+    }
+  }catch(e){}
+});
+
+const renderTodayV1101Base = renderToday;
+renderToday = function(){
+  renderTodayV1101Base();
+  lockTodayScreenV1101();
+  setTimeout(lockTodayScreenV1101,100);
+  setTimeout(lockTodayScreenV1101,300);
+  setTimeout(lockTodayScreenV1101,700);
+  setTimeout(lockTodayScreenV1101,1200);
+};
+
+const renderAllV1101Base = renderAll;
+renderAll = function(){
+  renderAllV1101Base();
+  lockTodayScreenV1101();
+  setTimeout(lockTodayScreenV1101,100);
+  setTimeout(lockTodayScreenV1101,300);
+  setTimeout(lockTodayScreenV1101,700);
+  setTimeout(lockTodayScreenV1101,1200);
+};
+
+const showScreenV1101Base = showScreen;
+showScreen = function(id,btn){
+  showScreenV1101Base(id,btn);
+  if(id==="today"){
+    lockTodayScreenV1101();
+    setTimeout(lockTodayScreenV1101,100);
+    setTimeout(lockTodayScreenV1101,300);
+    setTimeout(lockTodayScreenV1101,700);
+    setTimeout(lockTodayScreenV1101,1200);
+  }
+};
+
+// MutationObserver catches any older delayed card that inserts after the cleanup.
+setTimeout(()=>{
+  const today = document.getElementById("today");
+  if(today && !window.ruutTodayLockObserverV1101){
+    window.ruutTodayLockObserverV1101 = new MutationObserver(()=>lockTodayScreenV1101());
+    window.ruutTodayLockObserverV1101.observe(today,{childList:true});
+  }
+  lockTodayScreenV1101();
+},200);
+
+// Extra first-load cleanup window for older setTimeouts from prior versions.
+let ruutTodayLockTicksV1101 = 0;
+const ruutTodayLockTimerV1101 = setInterval(()=>{
+  ruutTodayLockTicksV1101++;
+  lockTodayScreenV1101();
+  if(ruutTodayLockTicksV1101 > 30) clearInterval(ruutTodayLockTimerV1101);
+},100);
+
 renderAll();
