@@ -7754,4 +7754,294 @@ togglePause = function(){
 };
 window.togglePause = togglePause;
 
+
+// ---------- V12.1 WORKOUT AUDIO MODE ----------
+state.voiceCoach = state.voiceCoach || {};
+state.voiceCoach.audioMode = state.voiceCoach.audioMode || "recorded";
+
+let ruutWorkoutAudioActiveV121 = false;
+let ruutSystemSpeechQueueV121 = Promise.resolve();
+
+function ruutAudioModeV121(){
+  state.voiceCoach = state.voiceCoach || {};
+  return state.voiceCoach.audioMode || "recorded";
+}
+
+function ruutShouldUseSystemVoiceV121(){
+  const mode = ruutAudioModeV121();
+  if(mode === "system") return true;
+  if(mode === "compatible" && ruutWorkoutAudioActiveV121) return true;
+  return false;
+}
+
+function ruutSystemSpeakV121(text){
+  const phraseText = String(text || "").trim();
+  if(!phraseText || !("speechSynthesis" in window)) return Promise.resolve(false);
+
+  ruutSystemSpeechQueueV121 = ruutSystemSpeechQueueV121
+    .catch(()=>{})
+    .then(()=>new Promise(resolve=>{
+      try{
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.resume();
+
+        const u = new SpeechSynthesisUtterance(phraseText);
+        u.rate = settings.voiceRate || 0.95;
+        u.pitch = 1;
+        u.volume = 1;
+
+        try{
+          const available = window.speechSynthesis.getVoices ? window.speechSynthesis.getVoices() : [];
+          const chosen = available.find(v => v.voiceURI === settings.voiceURI);
+          if(chosen) u.voice = chosen;
+        }catch(e){}
+
+        let finished = false;
+        const done = () => {
+          if(finished) return;
+          finished = true;
+          resolve(true);
+        };
+
+        u.onend = done;
+        u.onerror = done;
+
+        window.speechSynthesis.speak(u);
+        setTimeout(done, Math.max(1800, phraseText.length * 90));
+      }catch(e){
+        resolve(false);
+      }
+    }));
+
+  return ruutSystemSpeechQueueV121;
+}
+
+function ruutStopSystemSpeechV121(){
+  try{
+    if("speechSynthesis" in window) window.speechSynthesis.cancel();
+  }catch(e){}
+  ruutSystemSpeechQueueV121 = Promise.resolve();
+}
+
+function ruutCueTextForKeyV121(key){
+  const style = String(settings.coachStyle || "balanced").toLowerCase();
+
+  const tough = {
+    workout_start:"Listen up. Training starts now. No excuses. No delays. Move with purpose and get to work.",
+    warmup_start:"Begin your warmup. Prepare the body. Prepare the mind. The mission starts here.",
+    run_start:"Move. Set your pace and stay disciplined. Every step has a purpose.",
+    walk_recovery:"Recovery phase. Control your breathing. Regain your composure. Prepare for the next effort.",
+    interval_start:"Interval begins now. Increase the effort. Stay under control and maintain your form.",
+    halfway:"Halfway complete. The standard has not changed. Stay focused and finish the mission.",
+    one_minute_left:"One minute remaining. Stay focused. Stay disciplined. Finish strong.",
+    cooldown_start:"Mission complete. Begin recovery procedures. Bring your heart rate down and recover with intent.",
+    workout_complete:"Workout complete. You met the standard today. Well done. Prepare for the next mission.",
+    progression_day:"Additional workload authorized. Rise to the challenge. Maintain discipline and execute.",
+    reduced_day:"Today's workload has been reduced. This is strategic recovery, not weakness. Follow the plan.",
+    rest_day:"Today is a recovery day. Recovery is training. Use it wisely and return ready for action.",
+    recovery_substitution:"Recovery operation in progress. Move with purpose, recover completely, and prepare for the next challenge.",
+    strength_begin:"Strength training begins now. Every repetition counts. Execute with precision.",
+    next_exercise:"Next exercise. Move into position. Stand by. Execute on command."
+  };
+
+  const trail = {
+    workout_start:"Trail guide is on. Ease into it and let the body warm up.",
+    warmup_start:"Begin your warmup. Start easy and settle into the day.",
+    run_start:"Run smooth. Light feet and steady breathing.",
+    walk_recovery:"Walk now. Recover and take in the air.",
+    interval_start:"Pick it up now. Stay smooth and controlled.",
+    halfway:"Halfway point. Turn back toward home and stay steady.",
+    one_minute_left:"One minute left. Keep moving and finish clean.",
+    cooldown_start:"Cooldown begins. Walk easy and bring the breathing down.",
+    workout_complete:"Workout complete. Good miles today.",
+    progression_day:"Today's plan adds a little more. Take it steady and earn it.",
+    reduced_day:"Today's plan is lighter. Respect the recovery and keep moving well.",
+    rest_day:"Rest day. Keep it light and let the body recover.",
+    recovery_substitution:"Recovery comes first today. Move easy and let the body reset.",
+    strength_begin:"Strength work begins. Move with control.",
+    next_exercise:"Next exercise. Set your position and move clean."
+  };
+
+  const balanced = {
+    workout_start:"Workout starting. Stay focused and move with purpose.",
+    warmup_start:"Begin your warmup. Take it easy and prepare your body.",
+    run_start:"Run now. Find a steady pace and stay relaxed.",
+    walk_recovery:"Recovery interval. Slow down, breathe, and reset.",
+    interval_start:"Begin the next interval. Increase effort and stay in control.",
+    halfway:"You're halfway there. Stay consistent and keep moving forward.",
+    one_minute_left:"One minute remaining. Stay focused and finish strong.",
+    cooldown_start:"Begin your cooldown. Let your heart rate come down gradually.",
+    workout_complete:"Workout complete. Nice work today.",
+    progression_day:"Today's workload has been adjusted upward. Stay disciplined and earn the extra work.",
+    reduced_day:"Today's workout has been adjusted to support recovery. Focus on quality, not quantity.",
+    rest_day:"Today is a rest day. Recovery is part of training.",
+    recovery_substitution:"Recovery comes first today. Move easily and let your body absorb the training.",
+    strength_begin:"Strength work starts now. Focus on control and form.",
+    next_exercise:"Next exercise. Get set and begin."
+  };
+
+  if(style.includes("tough")) return tough[key] || balanced[key] || "";
+  if(style.includes("trail")) return trail[key] || balanced[key] || "";
+  return balanced[key] || "";
+}
+
+function ruutPlayCueSmartV121(key,statusEl=null){
+  if(ruutShouldUseSystemVoiceV121()){
+    ruutStopAllAudioV1203?.();
+    return ruutSystemSpeakV121(ruutCueTextForKeyV121(key));
+  }
+
+  if(typeof ruutPlayVoiceNowV1203 === "function"){
+    ruutPlayVoiceNowV1203(key,statusEl);
+    return Promise.resolve(true);
+  }
+
+  return ruutPlayVoiceV120(key,statusEl);
+}
+
+function playCoachAudioV105(key){ return ruutPlayCueSmartV121(key); }
+async function coachCueV105(key){ return ruutPlayCueSmartV121(key); }
+function ruutPlayVoiceV120(key,statusEl=null){ return ruutPlayCueSmartV121(key,statusEl); }
+window.playCoachAudioV105 = playCoachAudioV105;
+window.coachCueV105 = coachCueV105;
+window.ruutPlayVoiceV120 = ruutPlayVoiceV120;
+
+async function cue(text){
+  const lower = String(text || "").toLowerCase();
+  let key = null;
+  if(lower.includes("warm")) key = "warmup_start";
+  else if(lower.includes("cooldown")) key = "cooldown_start";
+  else if(lower.includes("workout complete") || lower.includes("complete")) key = "workout_complete";
+  else if(lower.includes("half") || lower.includes("turn back")) key = "halfway";
+  else if(lower.includes("rest day")) key = "rest_day";
+  else if(lower.includes("run")) key = "run_start";
+  else if(lower.includes("walk") || lower.includes("recover")) key = "walk_recovery";
+  if(key) return ruutPlayCueSmartV121(key);
+  if(ruutShouldUseSystemVoiceV121()) return ruutSystemSpeakV121(text);
+  return Promise.resolve(false);
+}
+
+function speak(text){
+  if(ruutShouldUseSystemVoiceV121()) return ruutSystemSpeakV121(text);
+  return Promise.resolve(false);
+}
+window.cue = cue;
+window.speak = speak;
+
+const ruutStopAllAudioV121Base = ruutStopAllAudioV1203;
+ruutStopAllAudioV1203 = function(){
+  try{ ruutStopAllAudioV121Base?.(); }catch(e){}
+  ruutStopSystemSpeechV121();
+};
+
+function openVoiceSettingsV105(){
+  state.voiceCoach = state.voiceCoach || {};
+  if(state.voiceCoach.enabled === undefined) state.voiceCoach.enabled = true;
+  state.voiceCoach.audioMode = state.voiceCoach.audioMode || "recorded";
+
+  showModal(`<h2>Voice Coach</h2>
+    <p class="muted">Choose how RUUT should speak during workouts.</p>
+
+    <div class="detail">
+      <strong>Active Coach Style</strong>
+      <p class="muted">${typeof ruutCoachStyleLabelV120 === "function" ? ruutCoachStyleLabelV120() : (settings.coachStyle || "Balanced")}</p>
+      <p class="muted small">Change this from Settings → Coach Style.</p>
+    </div>
+
+    <div style="height:10px"></div>
+    <label><input type="checkbox" id="voiceCoachEnabledV120" ${state.voiceCoach.enabled !== false ? "checked" : ""}> Use voice coaching</label>
+
+    <div style="height:12px"></div>
+    <label class="small muted">Workout Audio Mode</label>
+    <select id="workoutAudioModeV121">
+      <option value="recorded" ${state.voiceCoach.audioMode==="recorded" ? "selected" : ""}>Recorded Voice</option>
+      <option value="compatible" ${state.voiceCoach.audioMode==="compatible" ? "selected" : ""}>Workout Compatible</option>
+      <option value="system" ${state.voiceCoach.audioMode==="system" ? "selected" : ""}>iPhone System Voice</option>
+    </select>
+
+    <div class="detail" style="margin-top:12px">
+      <strong>Recommended for Apple Music + Apple Workout</strong>
+      <p class="muted small">Use Workout Compatible. Briefings and tests can use recordings, but active workout cues use the iPhone system voice so they survive better with music and Apple Workout.</p>
+    </div>
+
+    <p id="voiceTestStatusV120" class="muted small" style="margin-top:10px">Ready.</p>
+
+    <div style="height:12px"></div>
+    <button onclick="saveVoiceSettingsV105()">Save Voice Settings</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="testVoiceCoachDirectV1121()">Test Current Mode</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="hideModal()">Cancel</button>`);
+}
+
+function saveVoiceSettingsV105(){
+  state.voiceCoach = state.voiceCoach || {};
+  state.voiceCoach.enabled = !!document.getElementById("voiceCoachEnabledV120")?.checked;
+  state.voiceCoach.audioMode = document.getElementById("workoutAudioModeV121")?.value || "recorded";
+  state.voiceCoach.fallbackSpeech = state.voiceCoach.audioMode !== "recorded";
+  state.voiceCoach.pack = typeof ruutCoachStyleKeyV120 === "function" ? ruutCoachStyleKeyV120() : "balanced";
+  saveState();
+  hideModal();
+}
+window.openVoiceSettingsV105 = openVoiceSettingsV105;
+window.saveVoiceSettingsV105 = saveVoiceSettingsV105;
+
+function testVoiceCoachDirectV1121(){
+  const status = document.getElementById("voiceTestStatusV120") || document.getElementById("voiceCoachInlineStatusV1121");
+  if(status) status.textContent = `Testing ${ruutAudioModeV121()} mode...`;
+
+  const previous = ruutWorkoutAudioActiveV121;
+  if(ruutAudioModeV121() === "compatible") ruutWorkoutAudioActiveV121 = true;
+  const result = ruutPlayCueSmartV121("workout_start",status);
+  setTimeout(()=>{ ruutWorkoutAudioActiveV121 = previous; },1500);
+  return result;
+}
+window.testVoiceCoachDirectV1121 = testVoiceCoachDirectV1121;
+
+const startWorkoutV121Base = startWorkout;
+startWorkout = function(){
+  ruutWorkoutAudioActiveV121 = true;
+  return startWorkoutV121Base();
+};
+window.startWorkout = startWorkout;
+
+const finishWorkoutV121Base = finishWorkout;
+finishWorkout = async function(){
+  ruutWorkoutAudioActiveV121 = true;
+  await finishWorkoutV121Base();
+  setTimeout(()=>{ ruutWorkoutAudioActiveV121 = false; },1000);
+};
+window.finishWorkout = finishWorkout;
+
+const playBriefingAudioV121Base = playBriefingAudioV113;
+playBriefingAudioV113 = function(kind){
+  const status = document.getElementById("briefingAudioStatusV113");
+  if(ruutAudioModeV121() === "system"){
+    return ruutSystemSpeakV121(typeof briefingGoalV113 === "function" ? briefingGoalV113(kind) : "Workout briefing.");
+  }
+  return playBriefingAudioV121Base(kind);
+};
+window.playBriefingAudioV113 = playBriefingAudioV113;
+
+function coachTabVoiceCardV111(){
+  state.voiceCoach = state.voiceCoach || {};
+  const enabled = state.voiceCoach.enabled !== false;
+  const mode = ruutAudioModeV121();
+
+  return `<section class="card hero">
+    <div class="pill-row"><span class="pill accent">Voice Coach</span><span class="pill">${enabled ? "Enabled" : "Disabled"}</span><span class="pill">${mode}</span></div>
+    <h3>Workout Audio Mode</h3>
+    <p class="muted">Use Workout Compatible when running Apple Music or Apple Workout at the same time.</p>
+    <p class="muted small">Recorded Voice uses your MP3s. Workout Compatible uses iPhone voice during workouts. System Voice uses iPhone voice everywhere.</p>
+    <p id="voiceCoachInlineStatusV1121" class="muted small">Voice test ready.</p>
+    <div class="grid two">
+      <button class="secondary" onclick="openVoiceSettingsV105()">Voice Settings</button>
+      <button class="secondary" onclick="testVoiceCoachDirectV1121()">Test Voice</button>
+    </div>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="openBriefingAudioTestV113()">Test Briefing Audio</button>
+  </section>`;
+}
+window.coachTabVoiceCardV111 = coachTabVoiceCardV111;
+
 renderAll();
