@@ -5690,4 +5690,513 @@ window.openBriefingV110 = openBriefingV110;
   window.beginWorkout = beginWorkout;
 })();
 
+// ---------- V14.5 STEP-BASED WORKOUT CUE ENGINE ----------
+/*
+  Final cue model:
+  - Run/walk workouts are converted into a planned list of steps.
+  - Each step counts when completed OR skipped.
+  - Halfway cue fires once after half the planned steps are passed.
+  - Halfway cue is spoken, then the next normal run/walk cue follows.
+  - Strength workouts walk through each exercise by round.
+  - Each strength exercise gets a name + short form cue.
+  - Skip moves to the next planned step.
+*/
+
+(function(){
+  const R14 = window.ruut14Final || {};
+  window.ruut14Final = R14;
+
+  R14.stepResolve = null;
+  R14.stepSkipped = false;
+  R14.currentStepLabel = "";
+
+  R14.formCue = function(name){
+    const n = String(name || "").toLowerCase();
+
+    if(n.includes("squat")) return "Sit the hips back, keep your chest tall, and drive through your feet.";
+    if(n.includes("push")) return "Keep your body straight, brace your core, and control every rep.";
+    if(n.includes("row")) return "Pull the elbow back, keep your shoulder down, and avoid twisting.";
+    if(n.includes("lunge")) return "Step with control, keep your front knee tracking over the foot, and stand tall.";
+    if(n.includes("plank")) return "Brace your core, squeeze your glutes, and keep a straight line.";
+    if(n.includes("carry")) return "Stand tall, keep your ribs down, and walk with steady control.";
+    if(n.includes("hinge") || n.includes("deadlift")) return "Hinge at the hips, keep your back neutral, and move with control.";
+    if(n.includes("press")) return "Brace your core, press smoothly, and avoid leaning back.";
+    if(n.includes("bridge")) return "Drive through your heels, squeeze the glutes, and control the lowering.";
+    if(n.includes("calf")) return "Rise under control, pause at the top, and lower slowly.";
+    if(n.includes("step")) return "Plant the whole foot, drive through the heel, and control the descent.";
+    if(n.includes("curl")) return "Keep the elbows quiet and control the weight both directions.";
+    if(n.includes("raise")) return "Move smoothly, keep control, and avoid swinging.";
+
+    return "Move with control, keep clean form, and stop if pain shows up.";
+  };
+
+  R14.speakBlocking = function(text){
+    const phrase = String(text || "").trim();
+    if(!phrase || !("speechSynthesis" in window)) return Promise.resolve(false);
+
+    return new Promise(resolve=>{
+      try{
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.resume();
+
+        const u = new SpeechSynthesisUtterance(phrase);
+        u.rate = settings.voiceRate || 0.95;
+        u.pitch = 1;
+        u.volume = 1;
+
+        try{
+          const voices = window.speechSynthesis.getVoices ? window.speechSynthesis.getVoices() : [];
+          const selected = voices.find(v => v.voiceURI === settings.voiceURI);
+          if(selected) u.voice = selected;
+        }catch(e){}
+
+        let done = false;
+        const finish = () => {
+          if(done) return;
+          done = true;
+          resolve(true);
+        };
+
+        u.onend = finish;
+        u.onerror = finish;
+        window.speechSynthesis.speak(u);
+
+        setTimeout(finish, Math.max(1200, Math.min(7000, phrase.length * 80)));
+      }catch(e){
+        resolve(false);
+      }
+    });
+  };
+
+  R14.say = function(text){
+    if(state.voiceCoach?.enabled === false) return Promise.resolve(false);
+    return R14.speakBlocking(text);
+  };
+
+  R14.sayCue = function(key, blocking=false){
+    const text = typeof R14.cueText === "function" ? R14.cueText(key) : "";
+    if(blocking) return R14.say(text);
+    R14.say(text);
+    return Promise.resolve(true);
+  };
+
+  R14.sayRouteHalfway = function(blocking=true){
+    const route = typeof R14.routeKey === "function" ? R14.routeKey() : "outback";
+    let text = "";
+
+    if(typeof R14.routeCueText === "function"){
+      text = R14.routeCueText("halfway");
+    }
+
+    if(!text){
+      text = typeof R14.cueText === "function" ? R14.cueText("halfway") : "Halfway point.";
+    }
+
+    setCue(route === "outback" || route === "trail" ? "TURN BACK" : "HALFWAY");
+    setWorkoutMessage(text);
+
+    if(blocking) return R14.say(text);
+    R14.say(text);
+    return Promise.resolve(true);
+  };
+
+  R14.stopVoice = function(){
+    try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
+  };
+
+  R14.buildRunSteps = function(x){
+    let total = Number(x.total || 0) * 60;
+    if(!total || total < 1) total = 60;
+
+    const runSeconds = Number(x.runSeconds || 60);
+    const walkSeconds = Number(x.walkSeconds || 60);
+
+    const steps = [];
+    let remaining = total;
+
+    while(remaining > 0){
+      const runDur = Math.min(runSeconds, remaining);
+      steps.push({kind:"run", label:"Run", seconds:runDur});
+      remaining -= runDur;
+      if(remaining <= 0) break;
+
+      const walkDur = Math.min(walkSeconds, remaining);
+      steps.push({kind:"walk", label:"Walk", seconds:walkDur});
+      remaining -= walkDur;
+    }
+
+    return {total, steps};
+  };
+
+  R14.timerStep = function(seconds, remainingBefore=seconds, total=seconds){
+    return new Promise(resolve=>{
+      let left = Math.max(0, seconds);
+      let elapsed = 0;
+      let finished = false;
+
+      R14.stepSkipped = false;
+      skipCurrentTimer = false;
+
+      clearInterval(activeTimer);
+      activeTimer = null;
+      updateTimer(left, remainingBefore, total);
+
+      const finish = (skipped=false)=>{
+        if(finished) return;
+        finished = true;
+        clearInterval(activeTimer);
+        activeTimer = null;
+        activeTimerResolve = null;
+        R14.stepResolve = null;
+        resolve({skipped, credited: skipped ? 0 : seconds});
+      };
+
+      R14.stepResolve = ()=>finish(true);
+      activeTimerResolve = ()=>finish(true);
+
+      activeTimer = setInterval(()=>{
+        if(workoutAbort){
+          finish(true);
+          return;
+        }
+
+        if(R14.stepSkipped || skipCurrentTimer){
+          finish(true);
+          return;
+        }
+
+        if(workoutPaused) return;
+
+        left--;
+        elapsed++;
+        updateTimer(left, Math.max(0, remainingBefore - elapsed), total);
+
+        if(left <= 0) finish(false);
+      },1000);
+    });
+  };
+
+  R14.warmup = async function(){
+    if(!settings.warmup) return {skipped:false, credited:0};
+
+    setCue("Warmup");
+    setTimer("2:00");
+    setWorkoutMessage("Warmup: march, leg swings, calf raises, easy movement. Tap Skip Current Step to move ahead.");
+    R14.sayCue("warmup_start", false);
+
+    return R14.timerStep(120,120,120);
+  };
+
+  R14.cooldown = async function(){
+    setCue("Cooldown");
+    setWorkoutMessage("Cooldown: easy walk, calves, hips, hamstrings. Tap Skip Current Step to finish.");
+    R14.sayCue("cooldown_start", false);
+
+    return R14.timerStep(180,180,180);
+  };
+
+  R14.runStep = async function(step, stepNumber, totalSteps, remaining, totalSeconds){
+    const label = step.kind === "run" ? "RUN" : "WALK";
+    setCue(`${label} ${stepNumber}/${totalSteps}`);
+    setWorkoutMessage(step.kind === "run" ? "Run now. Stay smooth and controlled." : "Walk recovery. Breathe and reset.");
+
+    R14.sayCue(step.kind === "run" ? "run_start" : "walk_recovery", false);
+
+    return R14.timerStep(step.seconds, remaining, totalSeconds);
+  };
+
+  R14.startRun = async function(x, readiness="normal"){
+    const built = R14.buildRunSteps(x);
+    const totalSeconds = readiness === "tired" ? Math.round(built.total * 0.8) : built.total;
+    let steps = built.steps;
+
+    // If tired reduces total time, rebuild with the reduced total while preserving intervals.
+    if(readiness === "tired"){
+      const clone = Object.assign({}, x, {total: totalSeconds / 60});
+      steps = R14.buildRunSteps(clone).steps;
+    }
+
+    const totalSteps = steps.length;
+    const halfwayStep = Math.max(1, Math.ceil(totalSteps / 2));
+    let completedSteps = 0;
+    let halfwayPlayed = false;
+    let remaining = totalSeconds;
+
+    await R14.warmup();
+    if(workoutAbort) return;
+
+    for(let i=0; i<steps.length && !workoutAbort; i++){
+      const step = steps[i];
+
+      const result = await R14.runStep(step, i+1, totalSteps, remaining, totalSeconds);
+
+      completedSteps++;
+      remaining = Math.max(0, remaining - step.seconds);
+
+      if(!halfwayPlayed && completedSteps >= halfwayStep){
+        halfwayPlayed = true;
+        await R14.sayRouteHalfway(true);
+      }
+    }
+
+    if(settings.cooldown && !workoutAbort) await R14.cooldown();
+    if(workoutAbort) return;
+
+    setCue("Complete");
+    setTimer("DONE");
+    setWorkoutMessage("Workout complete. Good work.");
+    R14.sayCue("workout_complete", false);
+
+    markComplete(false);
+    releaseWakeLock();
+
+    if(typeof openWorkoutDebriefV97 === "function"){
+      openWorkoutDebriefV97();
+    }
+  };
+
+  R14.buildStrengthSteps = function(x){
+    const rounds = Number(x.rounds || 1);
+    const exercises = Array.isArray(x.exercises) ? x.exercises : [];
+    const steps = [];
+
+    for(let r=1; r<=rounds; r++){
+      for(const e of exercises){
+        steps.push({round:r, totalRounds:rounds, exercise:e});
+      }
+    }
+
+    return steps;
+  };
+
+  R14.strengthStep = async function(step, index, totalSteps){
+    const e = step.exercise || {};
+    const name = e.name || "Exercise";
+    const mode = e.mode || "reps";
+
+    setCue(`${index}/${totalSteps}`);
+    setWorkoutMessage(`${name}. ${R14.formCue(name)}`);
+
+    const instruction = `${name}. Round ${step.round} of ${step.totalRounds}. ${R14.formCue(name)}`;
+    await R14.say(instruction);
+
+    if(mode === "timed"){
+      const seconds = Number(e.seconds || 30);
+      setTimer(formatTime ? formatTime(seconds) : String(seconds));
+      return R14.timerStep(seconds, seconds, seconds);
+    }
+
+    setTimer("DONE?");
+    setWorkoutMessage(`${name}. ${e.reps || "Complete the reps"}. Tap Skip Current Step when finished.`);
+    return new Promise(resolve=>{
+      let finished = false;
+
+      R14.stepSkipped = false;
+      skipCurrentTimer = false;
+
+      const finish = (skipped=false)=>{
+        if(finished) return;
+        finished = true;
+        activeTimerResolve = null;
+        R14.stepResolve = null;
+        resolve({skipped, credited:1});
+      };
+
+      R14.stepResolve = ()=>finish(true);
+      activeTimerResolve = ()=>finish(true);
+      window.resolveDone = ()=>finish(false);
+    });
+  };
+
+  R14.startStrength = async function(x, readiness="normal"){
+    await R14.warmup();
+    if(workoutAbort) return;
+
+    let steps = R14.buildStrengthSteps(x);
+    if(readiness === "tired" && Number(x.rounds || 1) > 1){
+      const clone = Object.assign({}, x, {rounds: Math.max(1, Number(x.rounds || 1)-1)});
+      steps = R14.buildStrengthSteps(clone);
+    }
+
+    const totalSteps = steps.length;
+    const halfwayStep = Math.max(1, Math.ceil(totalSteps / 2));
+    let completedSteps = 0;
+    let halfwayPlayed = false;
+
+    R14.sayCue("strength_begin", false);
+
+    for(let i=0; i<steps.length && !workoutAbort; i++){
+      const result = await R14.strengthStep(steps[i], i+1, totalSteps);
+      completedSteps++;
+
+      if(!halfwayPlayed && completedSteps >= halfwayStep){
+        halfwayPlayed = true;
+        await R14.sayRouteHalfway(true);
+      }
+    }
+
+    if(settings.cooldown && !workoutAbort) await R14.cooldown();
+    if(workoutAbort) return;
+
+    setCue("Complete");
+    setTimer("DONE");
+    setWorkoutMessage("Workout complete. Good work.");
+    R14.sayCue("workout_complete", false);
+
+    markComplete(false);
+    releaseWakeLock();
+
+    if(typeof openWorkoutDebriefV97 === "function"){
+      openWorkoutDebriefV97();
+    }
+  };
+
+  R14.startWorkout = async function(){
+    R14.stopVoice();
+
+    workoutAbort = false;
+    skipCurrentTimer = false;
+    workoutPaused = false;
+    R14.stepSkipped = false;
+    R14.lastCue = {key:"", at:0};
+
+    const x = currentWorkout();
+    if(!x){
+      showModal(`<h2>Workout Error</h2><p class="muted">No workout found for today.</p><button onclick="hideModal()">Done</button>`);
+      return;
+    }
+
+    R14.renderWorkout();
+
+    document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+    const workout = document.getElementById("workout");
+    if(workout) workout.classList.add("active");
+
+    document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));
+    const navBtns = document.querySelectorAll("nav button");
+    if(navBtns[1]) navBtns[1].classList.add("active");
+
+    try{ requestWakeLock(); }catch(e){}
+
+    if(x.type === "run") return R14.startRun(x,"normal");
+    if(x.type === "bodyweight") return R14.startStrength(x,"normal");
+    return R14.startRest ? R14.startRest(x) : null;
+  };
+
+  R14.skipCurrent = function(){
+    R14.stopVoice();
+    R14.stepSkipped = true;
+    skipCurrentTimer = true;
+    workoutPaused = false;
+
+    updatePauseButton();
+    setCue("Next");
+    setTimer("NEXT");
+    setWorkoutMessage("Moving to the next step...");
+
+    if(R14.stepResolve) R14.stepResolve();
+    else if(activeTimerResolve) activeTimerResolve();
+
+    if(window.resolveDone){
+      try{ window.resolveDone(); }catch(e){}
+    }
+  };
+
+  // Final runtime assignment.
+  startWorkout = R14.startWorkout;
+  beginWorkout = function(){ return R14.startWorkout(); };
+  skipCurrent = R14.skipCurrent;
+  window.startWorkout = startWorkout;
+  window.beginWorkout = beginWorkout;
+  window.skipCurrent = skipCurrent;
+})();
+
+// ---------- V14.6 STRENGTH CUES WITHOUT HALFWAY ----------
+/*
+  Strength workout rule:
+  - No halfway cue in strength workouts.
+  - Each exercise gets spoken by name.
+  - Each exercise gets a short form/instruction cue.
+  - Skip moves to the next exercise.
+*/
+
+(function(){
+  const R14 = window.ruut14Final;
+  if(!R14) return;
+
+  R14.startStrength = async function(x, readiness="normal"){
+    await R14.warmup();
+    if(workoutAbort) return;
+
+    let steps = R14.buildStrengthSteps(x);
+
+    if(readiness === "tired" && Number(x.rounds || 1) > 1){
+      const clone = Object.assign({}, x, {rounds: Math.max(1, Number(x.rounds || 1)-1)});
+      steps = R14.buildStrengthSteps(clone);
+    }
+
+    const totalSteps = steps.length;
+
+    R14.sayCue("strength_begin", false);
+
+    for(let i=0; i<steps.length && !workoutAbort; i++){
+      await R14.strengthStep(steps[i], i+1, totalSteps);
+      // No halfway cue for strength workouts.
+    }
+
+    if(settings.cooldown && !workoutAbort) await R14.cooldown();
+    if(workoutAbort) return;
+
+    setCue("Complete");
+    setTimer("DONE");
+    setWorkoutMessage("Workout complete. Good work.");
+    R14.sayCue("workout_complete", false);
+
+    markComplete(false);
+    releaseWakeLock();
+
+    if(typeof openWorkoutDebriefV97 === "function"){
+      openWorkoutDebriefV97();
+    }
+  };
+
+  // Re-assign final starter so strength uses the no-halfway version.
+  R14.startWorkout = async function(){
+    R14.stopVoice();
+
+    workoutAbort = false;
+    skipCurrentTimer = false;
+    workoutPaused = false;
+    R14.stepSkipped = false;
+    R14.lastCue = {key:"", at:0};
+
+    const x = currentWorkout();
+    if(!x){
+      showModal(`<h2>Workout Error</h2><p class="muted">No workout found for today.</p><button onclick="hideModal()">Done</button>`);
+      return;
+    }
+
+    R14.renderWorkout();
+
+    document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+    const workout = document.getElementById("workout");
+    if(workout) workout.classList.add("active");
+
+    document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));
+    const navBtns = document.querySelectorAll("nav button");
+    if(navBtns[1]) navBtns[1].classList.add("active");
+
+    try{ requestWakeLock(); }catch(e){}
+
+    if(x.type === "run") return R14.startRun(x,"normal");
+    if(x.type === "bodyweight") return R14.startStrength(x,"normal");
+    return R14.startRest ? R14.startRest(x) : null;
+  };
+
+  startWorkout = R14.startWorkout;
+  beginWorkout = function(){ return R14.startWorkout(); };
+  window.startWorkout = startWorkout;
+  window.beginWorkout = beginWorkout;
+})();
+
 renderAll();
