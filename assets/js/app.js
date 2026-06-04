@@ -8044,4 +8044,90 @@ function coachTabVoiceCardV111(){
 }
 window.coachTabVoiceCardV111 = coachTabVoiceCardV111;
 
+
+// ---------- V12.1.1 FINAL WORKOUT AUDIO MODE OVERRIDE ----------
+openVoiceSettingsV105 = function(){
+  state.voiceCoach = state.voiceCoach || {};
+  if(state.voiceCoach.enabled === undefined) state.voiceCoach.enabled = true;
+  state.voiceCoach.audioMode = state.voiceCoach.audioMode || "recorded";
+
+  const styleLabel = typeof ruutCoachStyleLabelV120 === "function"
+    ? ruutCoachStyleLabelV120()
+    : (settings.coachStyle || "Balanced");
+
+  showModal(`<h2>Voice Coach</h2>
+    <p class="muted">Choose how RUUT should speak during workouts.</p>
+
+    <div class="detail">
+      <strong>Active Coach Style</strong>
+      <p class="muted">${styleLabel}</p>
+      <p class="muted small">Change this from Settings → Coach Style.</p>
+    </div>
+
+    <div style="height:10px"></div>
+    <label><input type="checkbox" id="voiceCoachEnabledV120" ${state.voiceCoach.enabled !== false ? "checked" : ""}> Use voice coaching</label>
+
+    <div style="height:12px"></div>
+    <label class="small muted">Workout Audio Mode</label>
+    <select id="workoutAudioModeV121">
+      <option value="recorded" ${state.voiceCoach.audioMode==="recorded" ? "selected" : ""}>Recorded Voice</option>
+      <option value="compatible" ${state.voiceCoach.audioMode==="compatible" ? "selected" : ""}>Workout Compatible</option>
+      <option value="system" ${state.voiceCoach.audioMode==="system" ? "selected" : ""}>iPhone System Voice</option>
+    </select>
+
+    <div class="detail" style="margin-top:12px">
+      <strong>Recommended for Apple Music + Apple Workout</strong>
+      <p class="muted small">Use Workout Compatible. Briefings and tests can use recordings, but active workout cues use the iPhone system voice so they survive better with music and Apple Workout.</p>
+    </div>
+
+    <p id="voiceTestStatusV120" class="muted small" style="margin-top:10px">Ready.</p>
+
+    <div style="height:12px"></div>
+    <button onclick="saveVoiceSettingsV105()">Save Voice Settings</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="testVoiceCoachDirectV1121()">Test Current Mode</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="hideModal()">Cancel</button>`);
+};
+
+saveVoiceSettingsV105 = function(){
+  state.voiceCoach = state.voiceCoach || {};
+  state.voiceCoach.enabled = !!document.getElementById("voiceCoachEnabledV120")?.checked;
+  state.voiceCoach.audioMode = document.getElementById("workoutAudioModeV121")?.value || "recorded";
+  state.voiceCoach.fallbackSpeech = state.voiceCoach.audioMode !== "recorded";
+  state.voiceCoach.pack = typeof ruutCoachStyleKeyV120 === "function" ? ruutCoachStyleKeyV120() : "balanced";
+  saveState();
+  hideModal();
+};
+
+if(typeof window !== "undefined"){
+  window.openVoiceSettingsV105 = openVoiceSettingsV105;
+  window.saveVoiceSettingsV105 = saveVoiceSettingsV105;
+}
+
+// Force the Coach card to point at this final settings function.
+coachTabVoiceCardV111 = function(){
+  state.voiceCoach = state.voiceCoach || {};
+  const enabled = state.voiceCoach.enabled !== false;
+  const mode = state.voiceCoach.audioMode || "recorded";
+
+  return `<section class="card hero">
+    <div class="pill-row"><span class="pill accent">Voice Coach</span><span class="pill">${enabled ? "Enabled" : "Disabled"}</span><span class="pill">${mode}</span></div>
+    <h3>Workout Audio Mode</h3>
+    <p class="muted">Use Workout Compatible when running Apple Music or Apple Workout at the same time.</p>
+    <p class="muted small">Recorded Voice uses your MP3s. Workout Compatible uses iPhone voice during workouts. System Voice uses iPhone voice everywhere.</p>
+    <p id="voiceCoachInlineStatusV1121" class="muted small">Voice test ready.</p>
+    <div class="grid two">
+      <button class="secondary" onclick="openVoiceSettingsV105()">Voice Settings</button>
+      <button class="secondary" onclick="testVoiceCoachDirectV1121()">Test Voice</button>
+    </div>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="openBriefingAudioTestV113()">Test Briefing Audio</button>
+  </section>`;
+};
+
+if(typeof window !== "undefined"){
+  window.coachTabVoiceCardV111 = coachTabVoiceCardV111;
+}
+
 renderAll();
