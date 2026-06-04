@@ -6043,4 +6043,669 @@ async function startRun(x,readiness){
 }
 window.startRun = startRun;
 
+
+// ---------- V13.0.5 GLOBAL HALFWAY SUPPRESSOR ----------
+/*
+  This is a top-level safety lock.
+  If any old workflow tries to fire halfway immediately after Skip, block it by:
+  - suppressing showHalfway()
+  - suppressing cue() text containing halfway/turn back
+  - suppressing system speech text containing halfway/turn back
+  - suppressing phrase("half")
+  - using capture-click on Skip buttons before old onclick handlers run
+*/
+
+let ruutBlockHalfwayUntilV1305 = 0;
+
+function ruutBlockHalfwayNowV1305(ms=15000){
+  ruutBlockHalfwayUntilV1305 = Date.now() + ms;
+}
+
+function ruutHalfwayBlockedV1305(){
+  return Date.now() < ruutBlockHalfwayUntilV1305;
+}
+
+function ruutLooksLikeHalfwayTextV1305(text){
+  const s = String(text || "").toLowerCase();
+  return s.includes("halfway") || s.includes("turn back") || s.includes("turn around");
+}
+
+// Capture the user's skip tap before any old onclick handler fires.
+document.addEventListener("click", function(e){
+  const target = e.target;
+  const label = String(target?.textContent || target?.value || "").toLowerCase();
+  if(label.includes("skip current") || label === "skip" || label.includes("skip step")){
+    ruutBlockHalfwayNowV1305(15000);
+    try{ ruutStopAudioV130?.(); }catch(err){}
+    try{ ruutStopAllVoiceHardV1303?.(); }catch(err){}
+    try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(err){}
+  }
+}, true);
+
+// Block phrase("half") from the old voice-pack path during skip transitions.
+const phraseV1305Base = phrase;
+phrase = function(k){
+  if(String(k || "").toLowerCase() === "half" && ruutHalfwayBlockedV1305()){
+    return "";
+  }
+  return phraseV1305Base(k);
+};
+window.phrase = phrase;
+
+// Final showHalfway override.
+function showHalfway(){
+  if(ruutHalfwayBlockedV1305()) return;
+
+  // If newer timing variables exist, respect them.
+  try{
+    if(typeof ruutHalfwayAllowedHardV1303 !== "undefined" && !ruutHalfwayAllowedHardV1303) return;
+    if(typeof ruutHalfwayPlayedHardV1303 !== "undefined" && ruutHalfwayPlayedHardV1303) return;
+    if(typeof ruutActualWorkoutSecondsHardV1303 !== "undefined" && typeof ruutTotalWorkoutSecondsHardV1303 !== "undefined"){
+      if(ruutActualWorkoutSecondsHardV1303 < Math.floor(ruutTotalWorkoutSecondsHardV1303 / 2)) return;
+      ruutHalfwayPlayedHardV1303 = true;
+    }
+  }catch(e){}
+
+  setCue("TURN BACK");
+  setWorkoutMessage("Halfway point. Turn back now.");
+  ruutPlayCueV130("halfway");
+}
+window.showHalfway = showHalfway;
+
+// Final cue override with halfway text blocker.
+const cueV1305Base = cue;
+async function cue(text){
+  if(ruutHalfwayBlockedV1305() && ruutLooksLikeHalfwayTextV1305(text)){
+    return false;
+  }
+  return cueV1305Base(text);
+}
+window.cue = cue;
+
+// Final system speech blocker.
+const ruutSystemSpeakHardV1303Base = typeof ruutSystemSpeakHardV1303 === "function" ? ruutSystemSpeakHardV1303 : null;
+ruutSystemSpeakHardV1303 = function(text){
+  if(ruutHalfwayBlockedV1305() && ruutLooksLikeHalfwayTextV1305(text)){
+    return Promise.resolve(false);
+  }
+  return ruutSystemSpeakHardV1303Base ? ruutSystemSpeakHardV1303Base(text) : Promise.resolve(false);
+};
+window.ruutSystemSpeakHardV1303 = ruutSystemSpeakHardV1303;
+
+const ruutSystemSpeakV130Base = typeof ruutSystemSpeakV130 === "function" ? ruutSystemSpeakV130 : null;
+ruutSystemSpeakV130 = function(text){
+  if(ruutHalfwayBlockedV1305() && ruutLooksLikeHalfwayTextV1305(text)){
+    return Promise.resolve(false);
+  }
+  return ruutSystemSpeakV130Base ? ruutSystemSpeakV130Base(text) : Promise.resolve(false);
+};
+window.ruutSystemSpeakV130 = ruutSystemSpeakV130;
+
+// Final direct cue blocker.
+const ruutPlayCueV130Base = ruutPlayCueV130;
+ruutPlayCueV130 = function(key,statusEl=null){
+  if(String(key || "").toLowerCase() === "halfway" && ruutHalfwayBlockedV1305()){
+    if(statusEl) statusEl.textContent = "Halfway suppressed after skip.";
+    return Promise.resolve(false);
+  }
+  return ruutPlayCueV130Base(key,statusEl);
+};
+window.ruutPlayCueV130 = ruutPlayCueV130;
+
+// Final skip override. Do not call any base function that might trigger old halfway logic until block is active.
+const skipCurrentV1305Base = skipCurrent;
+skipCurrent = function(){
+  ruutBlockHalfwayNowV1305(15000);
+
+  try{ ruutStopAudioV130?.(); }catch(e){}
+  try{ ruutStopAllVoiceHardV1303?.(); }catch(e){}
+  try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
+
+  skipCurrentTimer = true;
+  workoutPaused = false;
+
+  updatePauseButton();
+  setCue("Next");
+  setTimer("NEXT");
+  setWorkoutMessage("Moving to the next step...");
+
+  if(activeTimerResolve) activeTimerResolve();
+  if(window.resolveDone){
+    try{ window.resolveDone(); }catch(e){}
+  }
+};
+window.skipCurrent = skipCurrent;
+
+
+// ---------- V13.1 CLEAN GUIDED RUN CONTROLLER ----------
+/*
+  This replaces the guided run controller instead of patching old halfway logic.
+
+  Rules:
+  - Start Workout opens cockpit immediately.
+  - No workout_start cue during active guided workouts.
+  - Warmup is first cue.
+  - Timer starts immediately while voice plays.
+  - Skip only resolves the current timer.
+  - Skip never triggers halfway.
+  - Halfway fires only after credited run/walk seconds reach 50%.
+  - Workout Compatible/System modes use system speech directly.
+  - Recorded mode uses MP3 directly.
+*/
+
+const RUUT_CLEAN_VOICE_FILES_V131 = {
+  warmup_start:"warmup_start.mp3",
+  run_start:"run_start.mp3",
+  walk_recovery:"walk_recovery.mp3",
+  halfway:"halfway.mp3",
+  cooldown_start:"cooldown_start.mp3",
+  workout_complete:"workout_complete.mp3",
+  rest_day:"rest_day.mp3",
+  recovery_substitution:"recovery_substitution.mp3",
+  strength_begin:"strength_begin.mp3",
+  next_exercise:"next_exercise.mp3"
+};
+
+let ruutCleanAudioV131 = null;
+let ruutCleanTimerResolveV131 = null;
+let ruutCleanTimerSkippedV131 = false;
+let ruutCleanWorkoutActiveV131 = false;
+let ruutCleanLastCueV131 = { key:"", at:0 };
+
+function ruutCleanStyleKeyV131(){
+  const s = String(settings.coachStyle || "balanced").toLowerCase();
+  if(s.includes("tough")) return "tough";
+  if(s.includes("trail")) return "trail";
+  return "balanced";
+}
+
+function ruutCleanStyleLabelV131(){
+  const k = ruutCleanStyleKeyV131();
+  if(k === "tough") return "Tough Love";
+  if(k === "trail") return "Trail Guide";
+  return "Balanced";
+}
+
+function ruutCleanAudioModeV131(){
+  state.voiceCoach = state.voiceCoach || {};
+  return state.voiceCoach.audioMode || "recorded";
+}
+
+function ruutCleanUseSystemV131(){
+  const mode = ruutCleanAudioModeV131();
+  return mode === "system" || (mode === "compatible" && ruutCleanWorkoutActiveV131);
+}
+
+function ruutCleanVoiceBaseV131(style=ruutCleanStyleKeyV131()){
+  if(style === "tough") return "./audio/coach/tough/";
+  if(style === "trail") return "./audio/coach/trail/";
+  return "./audio/coach/";
+}
+
+function ruutCleanVoiceCandidatesV131(key){
+  const file = RUUT_CLEAN_VOICE_FILES_V131[key] || `${key}.mp3`;
+  const style = ruutCleanStyleKeyV131();
+  const out = [];
+  if(style !== "balanced") out.push(`${ruutCleanVoiceBaseV131(style)}${file}?v=131`);
+  out.push(`./audio/coach/${file}?v=131`);
+  return out;
+}
+
+function ruutCleanTextV131(key){
+  const style = ruutCleanStyleKeyV131();
+
+  const balanced = {
+    warmup_start:"Begin your warmup. Take it easy and prepare your body.",
+    run_start:"Run now. Find a steady pace and stay relaxed.",
+    walk_recovery:"Recovery interval. Slow down, breathe, and reset.",
+    halfway:"You're halfway there. Stay consistent and keep moving forward.",
+    cooldown_start:"Begin your cooldown. Let your heart rate come down gradually.",
+    workout_complete:"Workout complete. Nice work today.",
+    rest_day:"Today is a rest day. Recovery is part of training.",
+    recovery_substitution:"Recovery comes first today. Move easily and let your body absorb the training.",
+    strength_begin:"Strength work starts now. Focus on control and form.",
+    next_exercise:"Next exercise. Get set and begin."
+  };
+
+  const tough = {
+    warmup_start:"Begin your warmup. Prepare the body. Prepare the mind. The mission starts here.",
+    run_start:"Move. Set your pace and stay disciplined. Every step has a purpose.",
+    walk_recovery:"Recovery phase. Control your breathing. Regain your composure. Prepare for the next effort.",
+    halfway:"Halfway complete. The standard has not changed. Stay focused and finish the mission.",
+    cooldown_start:"Mission complete. Begin recovery procedures. Bring your heart rate down and recover with intent.",
+    workout_complete:"Workout complete. You met the standard today. Well done. Prepare for the next mission.",
+    rest_day:"Today is a recovery day. Recovery is training. Use it wisely and return ready for action.",
+    recovery_substitution:"Recovery operation in progress. Move with purpose, recover completely, and prepare for the next challenge.",
+    strength_begin:"Strength training begins now. Every repetition counts. Execute with precision.",
+    next_exercise:"Next exercise. Move into position. Stand by. Execute on command."
+  };
+
+  const trail = {
+    warmup_start:"Begin your warmup. Start easy and settle into the day.",
+    run_start:"Run smooth. Light feet and steady breathing.",
+    walk_recovery:"Walk now. Recover and take in the air.",
+    halfway:"Halfway point. Turn back toward home and stay steady.",
+    cooldown_start:"Cooldown begins. Walk easy and bring the breathing down.",
+    workout_complete:"Workout complete. Good miles today.",
+    rest_day:"Rest day. Keep it light and let the body recover.",
+    recovery_substitution:"Recovery comes first today. Move easy and let the body reset.",
+    strength_begin:"Strength work begins. Move with control.",
+    next_exercise:"Next exercise. Set your position and move clean."
+  };
+
+  if(style === "tough") return tough[key] || balanced[key] || "";
+  if(style === "trail") return trail[key] || balanced[key] || "";
+  return balanced[key] || "";
+}
+
+function ruutCleanStopVoiceV131(){
+  try{
+    if(ruutCleanAudioV131){
+      ruutCleanAudioV131.pause();
+      ruutCleanAudioV131.currentTime = 0;
+    }
+  }catch(e){}
+  try{
+    if(ruutCurrentAudioV130){
+      ruutCurrentAudioV130.pause();
+      ruutCurrentAudioV130.currentTime = 0;
+    }
+  }catch(e){}
+  try{
+    if(ruutAudioV120){
+      ruutAudioV120.pause();
+      ruutAudioV120.currentTime = 0;
+    }
+  }catch(e){}
+  try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
+}
+
+function ruutCleanSystemSpeakV131(text){
+  const phrase = String(text || "").trim();
+  if(!phrase || !("speechSynthesis" in window)) return;
+
+  try{
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.resume();
+
+    const u = new SpeechSynthesisUtterance(phrase);
+    u.rate = settings.voiceRate || 0.95;
+    u.pitch = 1;
+    u.volume = 1;
+
+    try{
+      const voices = window.speechSynthesis.getVoices ? window.speechSynthesis.getVoices() : [];
+      const chosen = voices.find(v => v.voiceURI === settings.voiceURI);
+      if(chosen) u.voice = chosen;
+    }catch(e){}
+
+    window.speechSynthesis.speak(u);
+  }catch(e){}
+}
+
+function ruutCleanPlayMp3V131(key){
+  const candidates = ruutCleanVoiceCandidatesV131(key);
+  let i = 0;
+
+  const tryNext = () => {
+    if(i >= candidates.length) return;
+    const url = candidates[i++];
+
+    try{
+      ruutCleanStopVoiceV131();
+      const audio = new Audio(url);
+      ruutCleanAudioV131 = audio;
+      ruutCurrentAudioV130 = audio;
+      audio.preload = "auto";
+      audio.volume = 1;
+      audio.onerror = () => tryNext();
+      const p = audio.play();
+      if(p && typeof p.catch === "function") p.catch(()=>tryNext());
+    }catch(e){
+      tryNext();
+    }
+  };
+
+  tryNext();
+}
+
+function ruutCleanSpeakCueV131(key){
+  const now = Date.now();
+
+  if(ruutCleanLastCueV131.key === key && now - ruutCleanLastCueV131.at < 1800){
+    return;
+  }
+
+  ruutCleanLastCueV131 = { key, at:now };
+
+  if(state.voiceCoach?.enabled === false) return;
+
+  if(ruutCleanUseSystemV131()){
+    ruutCleanStopVoiceV131();
+    ruutCleanSystemSpeakV131(ruutCleanTextV131(key));
+    return;
+  }
+
+  ruutCleanPlayMp3V131(key);
+}
+
+function ruutCleanTimerV131(seconds,remainingBefore,total){
+  return new Promise(resolve=>{
+    let left = Math.max(0, seconds);
+    let elapsed = 0;
+    let resolved = false;
+
+    ruutCleanTimerSkippedV131 = false;
+    skipCurrentTimer = false;
+    clearInterval(activeTimer);
+    activeTimer = null;
+
+    updateTimer(left, remainingBefore, total);
+
+    const finish = (skipped=false) => {
+      if(resolved) return;
+      resolved = true;
+      clearInterval(activeTimer);
+      activeTimer = null;
+      activeTimerResolve = null;
+      ruutCleanTimerResolveV131 = null;
+      const credited = skipped ? 0 : Math.min(seconds, elapsed || seconds);
+      resolve({ skipped, credited });
+    };
+
+    ruutCleanTimerResolveV131 = () => finish(true);
+    activeTimerResolve = () => finish(true);
+
+    activeTimer = setInterval(()=>{
+      if(workoutAbort){
+        finish(true);
+        return;
+      }
+
+      if(ruutCleanTimerSkippedV131 || skipCurrentTimer){
+        finish(true);
+        return;
+      }
+
+      if(workoutPaused) return;
+
+      left--;
+      elapsed++;
+      updateTimer(left, Math.max(0, remainingBefore - elapsed), total);
+
+      if(left <= 0){
+        finish(false);
+      }
+    },1000);
+  });
+}
+
+function ruutCleanShowWorkoutScreenV131(){
+  document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+  document.getElementById("workout").classList.add("active");
+  document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));
+  const navBtns = document.querySelectorAll("nav button");
+  if(navBtns[1]) navBtns[1].classList.add("active");
+  renderWorkout();
+}
+
+async function ruutCleanWarmupV131(){
+  if(!settings.warmup) return { skipped:false, credited:0 };
+
+  setCue("Warmup");
+  setTimer("2:00");
+  setWorkoutMessage("Warmup: march, leg swings, calf raises, easy movement. Tap Skip Current Step to move ahead.");
+
+  ruutCleanSpeakCueV131("warmup_start");
+
+  return ruutCleanTimerV131(120,120,120);
+}
+
+async function ruutCleanCooldownV131(){
+  setCue("Cooldown");
+  setWorkoutMessage("Cooldown: easy walk, calves, hips, hamstrings. Tap Skip Current Step to finish.");
+
+  ruutCleanSpeakCueV131("cooldown_start");
+
+  return ruutCleanTimerV131(180,180,180);
+}
+
+async function ruutCleanRunSegmentV131(label,seconds,remaining,total){
+  setCue(label.toUpperCase());
+  setWorkoutMessage(label === "Run" ? "Stay controlled. Smooth is fast." : "Recover. Keep moving.");
+
+  ruutCleanSpeakCueV131(label === "Run" ? "run_start" : "walk_recovery");
+
+  return ruutCleanTimerV131(seconds,remaining,total);
+}
+
+async function ruutCleanStartRunV131(x,readiness){
+  let total = x.total * 60;
+  if(readiness === "tired") total = Math.round(total * .8);
+
+  let remaining = total;
+  let actualCredited = 0;
+  const halfwayAt = Math.floor(total / 2);
+  let halfwayPlayed = false;
+
+  setCue("Warmup");
+  setWorkoutMessage("Warm up first. Then follow the run/walk cues.");
+
+  await ruutCleanWarmupV131();
+  if(workoutAbort) return;
+
+  while(remaining > 0 && !workoutAbort){
+    const runDur = Math.min(x.runSeconds, remaining);
+    const runResult = await ruutCleanRunSegmentV131("Run", runDur, remaining, total);
+    remaining -= runDur;
+
+    if(!runResult.skipped){
+      actualCredited += runDur;
+      if(!halfwayPlayed && actualCredited >= halfwayAt){
+        halfwayPlayed = true;
+        setCue("TURN BACK");
+        setWorkoutMessage("Halfway point. Turn back now.");
+        ruutCleanSpeakCueV131("halfway");
+      }
+    }
+
+    if(workoutAbort || remaining <= 0) break;
+
+    const walkDur = Math.min(x.walkSeconds, remaining);
+    const walkResult = await ruutCleanRunSegmentV131("Walk", walkDur, remaining, total);
+    remaining -= walkDur;
+
+    if(!walkResult.skipped){
+      actualCredited += walkDur;
+      if(!halfwayPlayed && actualCredited >= halfwayAt){
+        halfwayPlayed = true;
+        setCue("TURN BACK");
+        setWorkoutMessage("Halfway point. Turn back now.");
+        ruutCleanSpeakCueV131("halfway");
+      }
+    }
+  }
+
+  if(settings.cooldown && !workoutAbort){
+    await ruutCleanCooldownV131();
+  }
+
+  if(workoutAbort) return;
+
+  setCue("Complete");
+  setTimer("DONE");
+  setWorkoutMessage("Workout complete. Good work.");
+  ruutCleanSpeakCueV131("workout_complete");
+
+  markComplete(false);
+  releaseWakeLock();
+
+  if(typeof openWorkoutDebriefV97 === "function"){
+    openWorkoutDebriefV97();
+  }else{
+    showModal(`<h2>Workout Complete</h2><button onclick="hideModal()">Done</button>`);
+  }
+
+  ruutWorkoutActiveV130 = false;
+  ruutCleanWorkoutActiveV131 = false;
+}
+
+async function ruutCleanStartStrengthV131(x,readiness){
+  await ruutCleanWarmupV131();
+  if(workoutAbort) return;
+
+  let rounds = x.rounds;
+  if(readiness === "tired") rounds = Math.max(1, rounds - 1);
+
+  ruutCleanSpeakCueV131("strength_begin");
+
+  for(let r=1; r<=rounds && !workoutAbort; r++){
+    setCue(`Round ${r}`);
+    for(const e of x.exercises){
+      if(workoutAbort) return;
+
+      setCue(e.name);
+      ruutCleanSpeakCueV131("next_exercise");
+
+      if(e.mode === "timed"){
+        setWorkoutMessage(`${e.name}. ${e.seconds} seconds.`);
+        await ruutCleanTimerV131(e.seconds,e.seconds,e.seconds);
+      }else{
+        setTimer("DONE?");
+        setWorkoutMessage(`${e.name}. ${e.reps}. Tap Done when finished.`);
+        await waitForDone(e.name,e.reps);
+      }
+    }
+  }
+
+  if(settings.cooldown && !workoutAbort){
+    await ruutCleanCooldownV131();
+  }
+
+  if(workoutAbort) return;
+
+  setCue("Complete");
+  setTimer("DONE");
+  setWorkoutMessage("Workout complete. Good work.");
+  ruutCleanSpeakCueV131("workout_complete");
+  markComplete(false);
+  releaseWakeLock();
+  if(typeof openWorkoutDebriefV97 === "function") openWorkoutDebriefV97();
+
+  ruutWorkoutActiveV130 = false;
+  ruutCleanWorkoutActiveV131 = false;
+}
+
+function ruutCleanStartRestV131(x){
+  setWorkoutMessage("Rest day. Light walking only.");
+  setCue("Rest Day");
+  setTimer("REST");
+  ruutCleanSpeakCueV131("rest_day");
+}
+
+async function startWorkout(){
+  ruutCleanStopVoiceV131();
+
+  workoutAbort = false;
+  skipCurrentTimer = false;
+  workoutPaused = false;
+  ruutCleanTimerSkippedV131 = false;
+  ruutCleanWorkoutActiveV131 = true;
+  ruutWorkoutActiveV130 = true;
+  ruutCleanLastCueV131 = { key:"", at:0 };
+
+  const x = currentWorkout();
+
+  ruutCleanShowWorkoutScreenV131();
+  requestWakeLock();
+
+  // No startup cue. Warmup is first.
+
+  if(x.type === "run"){
+    return ruutCleanStartRunV131(x,"normal");
+  }
+
+  if(x.type === "bodyweight"){
+    return ruutCleanStartStrengthV131(x,"normal");
+  }
+
+  return ruutCleanStartRestV131(x);
+}
+
+function beginWorkout(readiness){
+  return startWorkout();
+}
+
+function skipCurrent(){
+  ruutCleanStopVoiceV131();
+  ruutCleanTimerSkippedV131 = true;
+  skipCurrentTimer = true;
+  workoutPaused = false;
+
+  updatePauseButton();
+  setCue("Next");
+  setTimer("NEXT");
+  setWorkoutMessage("Moving to the next step...");
+
+  if(ruutCleanTimerResolveV131){
+    ruutCleanTimerResolveV131();
+  }else if(activeTimerResolve){
+    activeTimerResolve();
+  }
+
+  if(window.resolveDone){
+    try{ window.resolveDone(); }catch(e){}
+  }
+}
+
+function togglePause(){
+  ruutCleanStopVoiceV131();
+  workoutPaused = !workoutPaused;
+
+  if(workoutPaused){
+    setCue("Paused");
+    setWorkoutMessage("Paused. Tap Resume to continue from here.");
+  }else{
+    setCue("Resume");
+    setWorkoutMessage("Resuming workout.");
+  }
+
+  updatePauseButton();
+}
+
+// Kill older halfway route completely. Only ruutCleanStartRunV131 can play halfway.
+function showHalfway(){
+  return false;
+}
+
+// Route all old cue systems into the clean cue system.
+function playCoachAudioV105(key){ ruutCleanSpeakCueV131(key); return Promise.resolve(true); }
+async function coachCueV105(key){ ruutCleanSpeakCueV131(key); return true; }
+function ruutPlayCueV130(key){ ruutCleanSpeakCueV131(key); return Promise.resolve(true); }
+function ruutPlayVoiceV120(key){ ruutCleanSpeakCueV131(key); return Promise.resolve(true); }
+function speak(text){ return ruutCleanUseSystemV131() ? ruutCleanSystemSpeakV131(text) : Promise.resolve(false); }
+async function cue(text){
+  const lower = String(text || "").toLowerCase();
+  if(lower.includes("warm")) return coachCueV105("warmup_start");
+  if(lower.includes("cooldown")) return coachCueV105("cooldown_start");
+  if(lower.includes("workout complete") || lower.includes("complete")) return coachCueV105("workout_complete");
+  if(lower.includes("rest day")) return coachCueV105("rest_day");
+  if(lower.includes("run")) return coachCueV105("run_start");
+  if(lower.includes("walk") || lower.includes("recover")) return coachCueV105("walk_recovery");
+  // Intentionally ignore generic halfway text here.
+  return Promise.resolve(false);
+}
+
+window.startWorkout = startWorkout;
+window.beginWorkout = beginWorkout;
+window.skipCurrent = skipCurrent;
+window.togglePause = togglePause;
+window.showHalfway = showHalfway;
+window.playCoachAudioV105 = playCoachAudioV105;
+window.coachCueV105 = coachCueV105;
+window.ruutPlayCueV130 = ruutPlayCueV130;
+window.ruutPlayVoiceV120 = ruutPlayVoiceV120;
+window.speak = speak;
+window.cue = cue;
+
 renderAll();
