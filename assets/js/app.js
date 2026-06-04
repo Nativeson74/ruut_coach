@@ -5473,4 +5473,221 @@ window.openBriefingV110 = openBriefingV110;
   }, 1500);
 })();
 
+// ---------- V14.4 ROUTE MODE CUES + HALFWAY FIX ----------
+/*
+  Route-mode aware guided run cues.
+
+  Fixes:
+  - Halfway cue is controlled by route mode.
+  - Out & Back gives a clear turnaround cue.
+  - Loop gives time-remaining style cues.
+  - Treadmill gives posture/effort cues.
+  - Trail gives terrain/control cues.
+  - All cue wording changes by Coach Style.
+*/
+
+(function(){
+  const R14 = window.ruut14Final;
+  if(!R14) return;
+
+  R14.routeMode = function(){
+    return String(settings.routeMode || "Out & Back: Halfway Turnaround");
+  };
+
+  R14.routeKey = function(){
+    const r = R14.routeMode().toLowerCase();
+    if(r.includes("loop")) return "loop";
+    if(r.includes("treadmill")) return "treadmill";
+    if(r.includes("trail")) return "trail";
+    return "outback";
+  };
+
+  R14.routeCueText = function(kind){
+    const route = R14.routeKey();
+    const style = R14.style();
+
+    const balanced = {
+      outback_halfway:"Halfway point. Turn back now and bring it home.",
+      loop_halfway:"Halfway complete. Stay steady and manage the remaining time.",
+      treadmill_halfway:"Halfway complete. Check your posture, relax your shoulders, and hold a steady effort.",
+      trail_halfway:"Halfway point. Stay controlled, watch your footing, and bring it back safely.",
+      loop_quarter:"First quarter complete. Settle in and keep the effort controlled.",
+      loop_threequarter:"Three quarters complete. Stay patient and finish the remaining time.",
+      treadmill_posture:"Posture check. Stand tall, relax your shoulders, and keep your cadence smooth.",
+      trail_terrain:"Trail check. Shorten the stride on uneven ground and protect your ankles."
+    };
+
+    const tough = {
+      outback_halfway:"Halfway point. Turn back now. Stay disciplined and finish the mission.",
+      loop_halfway:"Halfway complete. Maintain the standard. Control the remaining time.",
+      treadmill_halfway:"Halfway complete. Check posture. Control effort. Do not get sloppy.",
+      trail_halfway:"Halfway point. Watch your footing, protect your ankles, and keep moving with purpose.",
+      loop_quarter:"First quarter complete. Lock in. Keep the pace under control.",
+      loop_threequarter:"Three quarters complete. Finish the assignment. No drifting.",
+      treadmill_posture:"Posture check. Stand tall. Breathe under control. Keep your form sharp.",
+      trail_terrain:"Terrain check. Short stride. Stable feet. Reckless downhill efforts are not authorized."
+    };
+
+    const trailGuide = {
+      outback_halfway:"Halfway point. Turn back toward home and keep the rhythm easy.",
+      loop_halfway:"Halfway through the loop. Stay smooth and let the miles come to you.",
+      treadmill_halfway:"Halfway done. Stand tall, loosen the shoulders, and keep the effort steady.",
+      trail_halfway:"Halfway point on the trail. Check the ground, stay light on your feet, and head back steady.",
+      loop_quarter:"First quarter done. Settle into the loop and keep breathing easy.",
+      loop_threequarter:"Three quarters done. Keep the stride smooth and finish clean.",
+      treadmill_posture:"Quick form check. Tall posture, easy shoulders, steady feet.",
+      trail_terrain:"Trail check. Watch rocks and roots, stay balanced, and keep the pace honest."
+    };
+
+    const bank = style === "tough" ? tough : style === "trail" ? trailGuide : balanced;
+
+    if(kind === "halfway"){
+      if(route === "loop") return bank.loop_halfway;
+      if(route === "treadmill") return bank.treadmill_halfway;
+      if(route === "trail") return bank.trail_halfway;
+      return bank.outback_halfway;
+    }
+
+    if(kind === "quarter"){
+      if(route === "loop") return bank.loop_quarter;
+      if(route === "treadmill") return bank.treadmill_posture;
+      if(route === "trail") return bank.trail_terrain;
+      return "";
+    }
+
+    if(kind === "threequarter"){
+      if(route === "loop") return bank.loop_threequarter;
+      if(route === "treadmill") return bank.treadmill_posture;
+      if(route === "trail") return bank.trail_terrain;
+      return "";
+    }
+
+    return "";
+  };
+
+  R14.routeCue = function(kind){
+    const text = R14.routeCueText(kind);
+    if(!text) return Promise.resolve(false);
+    return R14.speak(text);
+  };
+
+  R14.startRun = async function(x, readiness="normal"){
+    let total = Number(x.total || 0) * 60;
+    if(!total || total < 1) total = 60;
+    if(readiness === "tired") total = Math.round(total * 0.8);
+
+    const runSeconds = Number(x.runSeconds || 60);
+    const walkSeconds = Number(x.walkSeconds || 60);
+
+    let remaining = total;
+    let credited = 0;
+
+    const quarterAt = Math.max(1, Math.floor(total * 0.25));
+    const halfwayAt = Math.max(1, Math.floor(total * 0.50));
+    const threeQuarterAt = Math.max(1, Math.floor(total * 0.75));
+
+    let quarterPlayed = false;
+    let halfwayPlayed = false;
+    let threeQuarterPlayed = false;
+
+    await R14.warmup();
+    if(workoutAbort) return;
+
+    const checkMilestones = function(){
+      if(!quarterPlayed && credited >= quarterAt){
+        quarterPlayed = true;
+        const route = R14.routeKey();
+        if(route === "loop" || route === "treadmill" || route === "trail"){
+          R14.routeCue("quarter");
+        }
+      }
+
+      if(!halfwayPlayed && credited >= halfwayAt){
+        halfwayPlayed = true;
+        setCue(R14.routeKey() === "outback" || R14.routeKey() === "trail" ? "TURN BACK" : "HALFWAY");
+        setWorkoutMessage(R14.routeCueText("halfway") || "Halfway point.");
+        R14.routeCue("halfway");
+      }
+
+      if(!threeQuarterPlayed && credited >= threeQuarterAt){
+        threeQuarterPlayed = true;
+        const route = R14.routeKey();
+        if(route === "loop" || route === "treadmill" || route === "trail"){
+          R14.routeCue("threequarter");
+        }
+      }
+    };
+
+    while(remaining > 0 && !workoutAbort){
+      const runDur = Math.min(runSeconds, remaining);
+      const runResult = await R14.runSegment("Run", runDur, remaining, total);
+      remaining -= runDur;
+
+      if(!runResult.skipped){
+        credited += runDur;
+        checkMilestones();
+      }
+
+      if(workoutAbort || remaining <= 0) break;
+
+      const walkDur = Math.min(walkSeconds, remaining);
+      const walkResult = await R14.runSegment("Walk", walkDur, remaining, total);
+      remaining -= walkDur;
+
+      if(!walkResult.skipped){
+        credited += walkDur;
+        checkMilestones();
+      }
+    }
+
+    if(settings.cooldown && !workoutAbort) await R14.cooldown();
+    if(workoutAbort) return;
+
+    setCue("Complete");
+    setTimer("DONE");
+    setWorkoutMessage("Workout complete. Good work.");
+    R14.cue("workout_complete");
+    markComplete(false);
+    releaseWakeLock();
+    if(typeof openWorkoutDebriefV97 === "function") openWorkoutDebriefV97();
+  };
+
+  R14.startWorkout = async function(){
+    R14.stopVoice();
+    workoutAbort = false;
+    skipCurrentTimer = false;
+    workoutPaused = false;
+    R14.skipped = false;
+    R14.lastCue = {key:"", at:0};
+
+    const x = currentWorkout();
+    if(!x){
+      showModal(`<h2>Workout Error</h2><p class="muted">No workout found for today.</p><button onclick="hideModal()">Done</button>`);
+      return;
+    }
+
+    R14.renderWorkout();
+
+    document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+    const workout = document.getElementById("workout");
+    if(workout) workout.classList.add("active");
+
+    document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));
+    const navBtns = document.querySelectorAll("nav button");
+    if(navBtns[1]) navBtns[1].classList.add("active");
+
+    try{ requestWakeLock(); }catch(e){}
+
+    if(x.type === "run") return R14.startRun(x,"normal");
+    if(x.type === "bodyweight") return R14.startStrength(x,"normal");
+    return R14.startRest(x);
+  };
+
+  // Final runtime assignment again.
+  startWorkout = R14.startWorkout;
+  beginWorkout = function(){ return R14.startWorkout(); };
+  window.startWorkout = startWorkout;
+  window.beginWorkout = beginWorkout;
+})();
+
 renderAll();
