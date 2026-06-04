@@ -108,10 +108,10 @@ function defaultSettings(){return{coachStyle:"trail",voiceURI:"",voiceRate:.95,k
 function saveState(){localStorage.setItem(STORAGE_KEY,JSON.stringify(state));renderAll()}
 function saveSettings(){localStorage.setItem(STORAGE_KEY+".settings",JSON.stringify(settings));renderAll()}
 function currentWeek(){return plan[state.week-1]} function currentWorkout(){return currentWeek().days[state.dayIndex-1]} function currentKey(){return`${state.week}-${state.dayIndex}`} function isComplete(){return state.completed.includes(currentKey())} function progressPercent(){return Math.round(state.completed.length/84*100)}
-function showScreen(id,btn){document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));document.getElementById(id).classList.add("active");document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));btn.classList.add("active");renderAll()}
-function renderAll(){renderToday();renderWorkout();renderDashboard();renderPlan();renderJournal();renderRecover()}
+function legacyRemoved_showScreen_preV142(id,btn){document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));document.getElementById(id).classList.add("active");document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));btn.classList.add("active");renderAll()}
+function legacyRemoved_renderAll_preV142(){renderToday();renderWorkout();renderDashboard();renderPlan();renderJournal();renderRecover()}
 function pill(t){return`<span class="pill ${t}">${t==="bodyweight"?"strength":t}</span>`}
-function renderToday(){
+function legacyRemoved_renderToday_preV142(){
  const x=currentWorkout(), w=currentWeek(), ex=x.type==="bodyweight"?x.exercises.map(e=>`<div class="exercise"><span>${e.name}</span><strong>${e.mode==="timed"?e.seconds+" sec":e.reps}</strong></div>`).join(""):"";
  document.getElementById("today").innerHTML=`<section class="card hero">
  <div class="pill-row"><span class="pill accent">Week ${state.week}</span><span class="pill">Day ${state.dayIndex}</span><span class="pill">${x.day}</span>${pill(x.type)}<span class="pill">${settings.routeMode}</span></div>
@@ -126,7 +126,7 @@ function renderToday(){
  <div class="grid two"><button class="secondary" onclick="markComplete(true)">${isComplete()?"Completed":"Mark Complete"}</button><button class="secondary" onclick="nextDay()">Next Day</button></div>
  </section>${renderExerciseGuides(x)}`;
 }
-function renderWorkout(){const x=currentWorkout();document.getElementById("workout").innerHTML=`<section class="card workout-mode"><div><p class="muted small">Guided session</p><div class="cue">${x.title}</div></div><div class="timer" id="timerDisplay">--:--</div><div class="progress-bar"><div id="workoutProgress" class="progress-fill"></div></div><p id="workoutMessage" class="muted">Tap start and keep this screen open during workouts.</p><div class="pill-row" style="justify-content:center"><span class="pill"><span id="awakeDot" class="dot"></span> <span id="awakeText">Screen awake not active</span></span></div><button onclick="startWorkout()">Start Today's Workout</button><button class="secondary" onclick="skipCurrent()">Skip Current Step</button><button id="pauseButton" class="secondary" onclick="togglePause()">Pause</button></section>`}
+function legacyRemoved_renderWorkout_preV142(){const x=currentWorkout();document.getElementById("workout").innerHTML=`<section class="card workout-mode"><div><p class="muted small">Guided session</p><div class="cue">${x.title}</div></div><div class="timer" id="timerDisplay">--:--</div><div class="progress-bar"><div id="workoutProgress" class="progress-fill"></div></div><p id="workoutMessage" class="muted">Tap start and keep this screen open during workouts.</p><div class="pill-row" style="justify-content:center"><span class="pill"><span id="awakeDot" class="dot"></span> <span id="awakeText">Screen awake not active</span></span></div><button onclick="startWorkout()">Start Today's Workout</button><button class="secondary" onclick="skipCurrent()">Skip Current Step</button><button id="pauseButton" class="secondary" onclick="togglePause()">Pause</button></section>`}
 function renderDashboard(){
  const weekDone=[1,2,3,4,5,6,7].filter(d=>state.completed.includes(`${state.week}-${d}`)).length;
  const badges=badgeList();
@@ -4707,5 +4707,200 @@ document.addEventListener("click", function(e){
     window.startWorkout();
   }
 }, true);
+
+// ---------- V14.2 FINAL TODAY + WORKOUT STABILITY ----------
+/*
+  Final UI/workout stabilization:
+  - Today page starts with one clean Guided Workout Mission card.
+  - Removes stale injected cards from older readiness/adaptive/weekly/status systems.
+  - Start Guided Workout calls the final v14 system voice workout controller.
+  - Workout screen stays simple and functional.
+*/
+
+function ruut142DateLabel(){
+  try{
+    return new Date().toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric",year:"numeric"});
+  }catch(e){
+    return new Date().toLocaleDateString();
+  }
+}
+
+function ruut142SimpleMissionCard(){
+  const x = currentWorkout();
+  const w = currentWeek ? currentWeek() : {theme:""};
+  const typeLabel = x.type === "bodyweight" ? "strength" : x.type;
+
+  const exerciseList = x.type === "bodyweight" && Array.isArray(x.exercises)
+    ? `<div class="list">${x.exercises.map(e=>`
+        <div class="exercise"><span>${e.name}</span><strong>${e.mode==="timed" ? e.seconds+" sec" : e.reps}</strong></div>
+      `).join("")}</div>`
+    : "";
+
+  return `<section class="card hero" id="todayMissionCardV142">
+    <div class="pill-row">
+      <span class="pill accent">Today's Mission</span>
+      <span class="pill">${ruut142DateLabel()}</span>
+      <span class="pill">Week ${state.week}</span>
+      <span class="pill">Day ${state.dayIndex}</span>
+      <span class="pill">${typeLabel}</span>
+    </div>
+
+    <h2>${x.title}</h2>
+    <p class="muted">${w.theme || ""}</p>
+
+    <div class="grid two">
+      <div class="stat"><span class="muted small">Time</span><strong>${x.time || "Planned"}</strong></div>
+      <div class="stat"><span class="muted small">Target</span><strong style="font-size:17px">${x.distance || "Complete"}</strong></div>
+    </div>
+
+    <div class="detail"><strong>Purpose</strong><p class="muted">${x.purpose || "Complete today's workout with control."}</p></div>
+    <div style="height:10px"></div>
+
+    <div class="detail"><strong>Workout Structure</strong><p class="muted">${x.structure || "Follow the guided session."}</p></div>
+    <div style="height:10px"></div>
+
+    <div class="grid two">
+      <div class="detail"><strong>Effort</strong><p class="muted">${x.effort || "Controlled"}</p></div>
+      <div class="detail"><strong>Caution</strong><p class="muted">${x.caution || "Listen to your body."}</p></div>
+    </div>
+
+    ${exerciseList}
+
+    <button onclick="window.startWorkout()">Start Guided Workout</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="openBriefingV110 ? openBriefingV110() : showModal('<h2>Briefing</h2><p class=&quot;muted&quot;>Follow today’s guided workout.</p><button onclick=&quot;hideModal()&quot;>Done</button>')">Briefing</button>
+  </section>`;
+}
+
+function ruut142CoachSummaryCard(){
+  const x = currentWorkout();
+  const completed = typeof isComplete === "function" && isComplete();
+  const history = (state.workoutDebriefs || []).slice(-3);
+  const historyLine = history.length
+    ? `${history.length} recent debrief${history.length===1?"":"s"} available for coach context.`
+    : "No recent debriefs yet.";
+
+  return `<section class="card hero" id="coachSummaryV142">
+    <div class="pill-row">
+      <span class="pill accent">Coach Read</span>
+      <span class="pill">${completed ? "Completed" : "Pending"}</span>
+    </div>
+    <h3>Today’s Focus</h3>
+    <p class="muted">${x.success || "Show up, move well, and finish the work."}</p>
+    <div class="detail"><strong>Recent Pattern</strong><p class="muted">${historyLine}</p></div>
+  </section>`;
+}
+
+function renderToday(){
+  const today = document.getElementById("today");
+  if(!today) return;
+
+  runDailyMaintenanceV101?.();
+
+  today.innerHTML = `
+    ${ruut142SimpleMissionCard()}
+    ${ruut142CoachSummaryCard()}
+  `;
+}
+window.renderToday = renderToday;
+
+function renderWorkout(){
+  const x = currentWorkout();
+  const workout = document.getElementById("workout");
+  if(!workout) return;
+
+  workout.innerHTML = `<section class="card workout-mode">
+    <div>
+      <p class="muted small">Guided session</p>
+      <div class="cue">${x.title}</div>
+    </div>
+    <div class="timer" id="timerDisplay">--:--</div>
+    <div class="progress-bar"><div id="workoutProgress" class="progress-fill"></div></div>
+    <p id="workoutMessage" class="muted">Tap start and keep this screen open during workouts.</p>
+    <div class="pill-row" style="justify-content:center">
+      <span class="pill"><span id="awakeDot" class="dot"></span> <span id="awakeText">Screen awake not active</span></span>
+    </div>
+    <button onclick="window.startWorkout()">Start Today's Workout</button>
+    <button class="secondary" onclick="window.skipCurrent()">Skip Current Step</button>
+    <button id="pauseButton" class="secondary" onclick="window.togglePause()">Pause</button>
+  </section>`;
+}
+window.renderWorkout = renderWorkout;
+
+function renderAll(){
+  renderToday();
+  renderWorkout();
+  renderDashboard();
+  renderPlan();
+  renderJournal();
+  renderRecover();
+}
+window.renderAll = renderAll;
+
+// Final showScreen prevents old delayed Today injectors from winning.
+function showScreen(id,btn){
+  document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+  const screen = document.getElementById(id);
+  if(screen) screen.classList.add("active");
+
+  document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));
+  if(btn) btn.classList.add("active");
+
+  renderAll();
+
+  // If any old delayed card injection still fires, clean Today again after it.
+  if(id === "today"){
+    setTimeout(renderToday, 250);
+    setTimeout(renderToday, 750);
+  }
+}
+window.showScreen = showScreen;
+
+// Hard remove stale old Today cards if any delayed legacy injector runs.
+function ruut142CleanToday(){
+  const today = document.getElementById("today");
+  if(!today) return;
+  const mission = document.getElementById("todayMissionCardV142");
+  if(!mission){
+    renderToday();
+    return;
+  }
+  Array.from(today.children).forEach(child=>{
+    if(child.id !== "todayMissionCardV142" && child.id !== "coachSummaryV142"){
+      child.remove();
+    }
+  });
+}
+setInterval(()=>{
+  const todayScreen = document.getElementById("today");
+  if(todayScreen && todayScreen.classList.contains("active")) ruut142CleanToday();
+}, 1000);
+
+// Capture start workout buttons and force final controller.
+document.addEventListener("click", function(e){
+  const label = String(e.target?.textContent || "").trim().toLowerCase();
+  if(label === "start guided workout" || label === "start today's workout" || label === "start workout"){
+    e.preventDefault();
+    e.stopPropagation();
+    window.startWorkout();
+  }
+}, true);
+
+// ---------- V14.2.1 BRIEFING FALLBACK ----------
+function openBriefingV110(){
+  const x = currentWorkout();
+  showModal(`<h2>Workout Briefing</h2>
+    <div class="pill-row"><span class="pill accent">Today</span><span class="pill">${ruut14StyleLabel ? ruut14StyleLabel() : "Coach"}</span></div>
+    <div class="detail"><strong>Goal</strong><p class="muted">${x.purpose || "Complete today’s workout with control."}</p></div>
+    <div style="height:10px"></div>
+    <div class="detail"><strong>Structure</strong><p class="muted">${x.structure || "Follow the guided workout."}</p></div>
+    <div style="height:10px"></div>
+    <div class="detail"><strong>Success</strong><p class="muted">${x.success || "Move well and finish the plan."}</p></div>
+    <div style="height:12px"></div>
+    <button onclick="hideModal();window.startWorkout()">Start Guided Workout</button>
+    <div style="height:8px"></div>
+    <button class="secondary" onclick="hideModal()">Done</button>`);
+}
+window.openBriefingV110 = openBriefingV110;
 
 renderAll();
