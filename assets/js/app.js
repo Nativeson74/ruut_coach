@@ -5711,4 +5711,89 @@ window.ruutPlayVoiceV120 = ruutPlayVoiceV120;
 window.speak = speak;
 window.cue = cue;
 
+
+// ---------- V13.2.1 START WORKOUT HARD FIX ----------
+/*
+  Fix:
+  - Make Start Workout explicitly global.
+  - Wrap startup in try/catch so button does not silently fail.
+  - Avoid recursion through beginWorkout/startWorkout.
+  - If anything fails, show the exact error in a modal.
+*/
+
+async function ruut1321StartWorkoutCore(){
+  ruut132StopVoice();
+
+  workoutAbort = false;
+  skipCurrentTimer = false;
+  workoutPaused = false;
+  ruut132Skipped = false;
+  ruut132Active = true;
+  ruutWorkoutActiveV130 = true;
+  ruut132LastCue = { key:"", at:0 };
+
+  const x = currentWorkout();
+
+  if(!x){
+    throw new Error("No current workout found.");
+  }
+
+  ruut132ShowWorkout();
+
+  try{
+    requestWakeLock();
+  }catch(e){
+    console.warn("Wake lock failed", e);
+  }
+
+  // No startup cue. Warmup is first.
+
+  if(x.type === "run"){
+    return ruut132StartRun(x, "normal");
+  }
+
+  if(x.type === "bodyweight"){
+    return ruut132StartStrength(x, "normal");
+  }
+
+  return ruut132StartRest(x);
+}
+
+window.startWorkout = function(){
+  try{
+    const p = ruut1321StartWorkoutCore();
+    if(p && typeof p.catch === "function"){
+      p.catch(err=>{
+        console.error("RUUT startWorkout failed", err);
+        showModal(`<h2>Workout Start Error</h2>
+          <p class="muted">${String(err?.message || err || "Unknown error")}</p>
+          <div style="height:12px"></div>
+          <button onclick="hideModal()">Done</button>`);
+      });
+    }
+    return p;
+  }catch(err){
+    console.error("RUUT startWorkout failed", err);
+    showModal(`<h2>Workout Start Error</h2>
+      <p class="muted">${String(err?.message || err || "Unknown error")}</p>
+      <div style="height:12px"></div>
+      <button onclick="hideModal()">Done</button>`);
+  }
+};
+
+window.beginWorkout = function(readiness){
+  return window.startWorkout();
+};
+
+// Also catch any button that might be wired to an old onclick context.
+document.addEventListener("click", function(e){
+  const el = e.target;
+  const label = String(el?.textContent || "").trim().toLowerCase();
+  if(label === "start workout" || label === "start guided workout"){
+    e.preventDefault();
+    e.stopPropagation();
+    window.startWorkout();
+  }
+}, true);
+
 renderAll();
