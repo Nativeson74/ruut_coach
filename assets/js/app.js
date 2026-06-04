@@ -5199,4 +5199,114 @@ showScreen = function(id,btn){
   if(id==="coach") setTimeout(cleanupVoiceCardDupesV130,100);
 };
 
+
+// ---------- V13.0.1 HALFWAY GUARD ----------
+let ruutHalfwayAllowedV1301 = false;
+let ruutHalfwayPlayedV1301 = false;
+let ruutLastTimerSkippedV1301 = false;
+let ruutWorkoutElapsedV1301 = 0;
+
+const skipCurrentV1301Base = skipCurrent;
+skipCurrent = function(){
+  ruutLastTimerSkippedV1301 = true;
+  ruutHalfwayAllowedV1301 = false;
+  return skipCurrentV1301Base();
+};
+window.skipCurrent = skipCurrent;
+
+function showHalfway(){
+  if(!ruutHalfwayAllowedV1301 || ruutHalfwayPlayedV1301) return;
+  ruutHalfwayPlayedV1301 = true;
+  setCue("TURN BACK");
+  setWorkoutMessage("Halfway point. Turn back now.");
+  ruutPlayCueV130("halfway");
+}
+window.showHalfway = showHalfway;
+
+async function runSegment(label,seconds,remaining,total){
+  ruutLastTimerSkippedV1301 = false;
+
+  setCue(label.toUpperCase());
+  setWorkoutMessage(label === "Run" ? "Stay controlled. Smooth is fast." : "Recover. Keep moving.");
+
+  // Fire voice and start timer immediately. Do not wait for audio.
+  ruutPlayCueV130(label === "Run" ? "run_start" : "walk_recovery");
+
+  const before = Date.now();
+  await timer(seconds,remaining,total);
+  const actualSeconds = Math.max(0, Math.round((Date.now() - before) / 1000));
+
+  if(ruutLastTimerSkippedV1301 || skipCurrentTimer){
+    ruutLastTimerSkippedV1301 = false;
+    return {skipped:true, credited:0};
+  }
+
+  return {skipped:false, credited:Math.min(seconds, actualSeconds || seconds)};
+}
+window.runSegment = runSegment;
+
+async function startRun(x,readiness){
+  let total = x.total * 60;
+  if(readiness === "tired") total = Math.round(total * .8);
+
+  let remaining = total;
+  const half = Math.floor(total / 2);
+  ruutWorkoutElapsedV1301 = 0;
+  ruutHalfwayAllowedV1301 = false;
+  ruutHalfwayPlayedV1301 = false;
+  ruutLastTimerSkippedV1301 = false;
+
+  setCue("Warmup");
+  setWorkoutMessage("Warm up first. Then follow the run/walk cues.");
+
+  if(settings.warmup) await warmup();
+  if(workoutAbort) return;
+
+  // Halfway can only happen after warmup is done and real workout time has accrued.
+  ruutHalfwayAllowedV1301 = true;
+
+  while(remaining > 0 && !workoutAbort){
+    const runDur = Math.min(x.runSeconds, remaining);
+    const runResult = await runSegment("Run", runDur, remaining, total);
+    if(workoutAbort) return;
+
+    if(!runResult.skipped){
+      remaining -= runDur;
+      ruutWorkoutElapsedV1301 += runDur;
+    }
+
+    if(!ruutHalfwayPlayedV1301 && ruutWorkoutElapsedV1301 >= half){
+      showHalfway();
+    }
+
+    if(remaining <= 0) break;
+
+    const walkDur = Math.min(x.walkSeconds, remaining);
+    const walkResult = await runSegment("Walk", walkDur, remaining, total);
+    if(workoutAbort) return;
+
+    if(!walkResult.skipped){
+      remaining -= walkDur;
+      ruutWorkoutElapsedV1301 += walkDur;
+    }
+
+    if(!ruutHalfwayPlayedV1301 && ruutWorkoutElapsedV1301 >= half){
+      showHalfway();
+    }
+
+    // If user keeps skipping, still advance the plan visually instead of trapping them.
+    // But do not play halfway because skipped time is not credited.
+    if(runResult.skipped && walkResult?.skipped){
+      remaining -= Math.min(runDur + walkDur, remaining);
+    }
+  }
+
+  ruutHalfwayAllowedV1301 = false;
+
+  if(settings.cooldown) await cooldown();
+  if(workoutAbort) return;
+  await finishWorkout();
+}
+window.startRun = startRun;
+
 renderAll();
