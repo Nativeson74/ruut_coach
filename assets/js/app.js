@@ -5796,4 +5796,123 @@ document.addEventListener("click", function(e){
   }
 }, true);
 
+
+// ---------- V13.2.2 HALFWAY EVENT FIX ----------
+/*
+  Fix:
+  - Halfway is now based on planned run/walk progress crossing 50%.
+  - It does not trigger during warmup.
+  - It does not trigger immediately after skipping warmup.
+  - It works in all coaching styles.
+  - It works in Recorded, Workout Compatible, and iPhone System Voice modes.
+*/
+
+let ruutHalfwayStateV1322 = {
+  total: 0,
+  remaining: 0,
+  halfAtRemaining: 0,
+  played: false,
+  armed: false,
+  completedSegments: 0
+};
+
+function ruutResetHalfwayV1322(totalSeconds){
+  ruutHalfwayStateV1322 = {
+    total: totalSeconds,
+    remaining: totalSeconds,
+    halfAtRemaining: Math.floor(totalSeconds / 2),
+    played: false,
+    armed: false,
+    completedSegments: 0
+  };
+}
+
+function ruutCheckHalfwayV1322(){
+  const h = ruutHalfwayStateV1322;
+
+  if(!h.armed) return;
+  if(h.played) return;
+  if(!h.total) return;
+
+  // Require at least one actual run/walk segment to have completed.
+  if(h.completedSegments < 1) return;
+
+  if(h.remaining <= h.halfAtRemaining){
+    h.played = true;
+    setCue("TURN BACK");
+    setWorkoutMessage("Halfway point. Turn back now.");
+    ruut132Cue("halfway");
+  }
+}
+
+async function ruut132StartRun(x, readiness){
+  let total = x.total * 60;
+  if(readiness === "tired") total = Math.round(total * .8);
+
+  let remaining = total;
+  ruutResetHalfwayV1322(total);
+
+  setCue("Warmup");
+  setWorkoutMessage("Warm up first. Then follow the run/walk cues.");
+
+  await ruut132Warmup();
+  if(workoutAbort) return;
+
+  // Halfway is only armed after warmup is over.
+  ruutHalfwayStateV1322.armed = true;
+
+  while(remaining > 0 && !workoutAbort){
+    const runDur = Math.min(x.runSeconds, remaining);
+    const runResult = await ruut132RunSegment("Run", runDur, remaining, total);
+
+    remaining -= runDur;
+    ruutHalfwayStateV1322.remaining = remaining;
+
+    if(!runResult.skipped){
+      ruutHalfwayStateV1322.completedSegments++;
+      ruutCheckHalfwayV1322();
+    }
+
+    if(workoutAbort || remaining <= 0) break;
+
+    const walkDur = Math.min(x.walkSeconds, remaining);
+    const walkResult = await ruut132RunSegment("Walk", walkDur, remaining, total);
+
+    remaining -= walkDur;
+    ruutHalfwayStateV1322.remaining = remaining;
+
+    if(!walkResult.skipped){
+      ruutHalfwayStateV1322.completedSegments++;
+      ruutCheckHalfwayV1322();
+    }
+  }
+
+  if(settings.cooldown && !workoutAbort){
+    await ruut132Cooldown();
+  }
+
+  if(workoutAbort) return;
+
+  setCue("Complete");
+  setTimer("DONE");
+  setWorkoutMessage("Workout complete. Good work.");
+  ruut132Cue("workout_complete");
+
+  markComplete(false);
+  releaseWakeLock();
+  ruut132Active = false;
+  ruutWorkoutActiveV130 = false;
+
+  if(typeof openWorkoutDebriefV97 === "function"){
+    openWorkoutDebriefV97();
+  }
+}
+
+function showHalfway(){
+  // Manual/legacy calls now use the same guarded checker.
+  ruutCheckHalfwayV1322();
+}
+window.showHalfway = showHalfway;
+window.ruutCheckHalfwayV1322 = ruutCheckHalfwayV1322;
+
 renderAll();
