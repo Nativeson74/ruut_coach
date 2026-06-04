@@ -5866,4 +5866,181 @@ skipCurrent = function(){
 };
 window.skipCurrent = skipCurrent;
 
+
+// ---------- V13.0.4 SKIP DOES NOT TRIGGER HALFWAY ----------
+/*
+  Fix isolated issue:
+  - Start -> warmup is correct.
+  - Skip during warmup incorrectly triggers halfway, then run cue twice.
+  Strategy:
+  - Skip sets a suppress-halfway window.
+  - The next segment after skip may speak run/walk once.
+  - Halfway is blocked until at least one full non-skipped workout segment completes.
+*/
+
+let ruutSuppressHalfwayUntilV1304 = 0;
+let ruutSkipTransitionActiveV1304 = false;
+let ruutNonSkippedSegmentsV1304 = 0;
+let ruutLastSpokenKeyV1304 = "";
+let ruutLastSpokenAtV1304 = 0;
+
+function ruutSpeakCueHardV1303(key){
+  const now = Date.now();
+
+  // Hard debounce duplicate run/walk after skip transition.
+  if(ruutLastSpokenKeyV1304 === key && now - ruutLastSpokenAtV1304 < 3500){
+    return Promise.resolve(false);
+  }
+  ruutLastSpokenKeyV1304 = key;
+  ruutLastSpokenAtV1304 = now;
+
+  if(ruutHardUseSystemV1303()){
+    ruutStopAllVoiceHardV1303();
+    return ruutSystemSpeakHardV1303(ruutHardTextV1303(key));
+  }
+
+  if(typeof ruutPlayMp3CandidatesV130 === "function"){
+    ruutPlayMp3CandidatesV130(ruutVoiceCandidatesV130(key));
+    return Promise.resolve(true);
+  }
+
+  return Promise.resolve(false);
+}
+window.ruutSpeakCueHardV1303 = ruutSpeakCueHardV1303;
+
+function showHalfway(){
+  const now = Date.now();
+  if(now < ruutSuppressHalfwayUntilV1304) return;
+  if(ruutSkipTransitionActiveV1304) return;
+  if(ruutNonSkippedSegmentsV1304 < 1) return;
+  if(!ruutHalfwayAllowedHardV1303) return;
+  if(ruutHalfwayPlayedHardV1303) return;
+  if(ruutActualWorkoutSecondsHardV1303 < Math.floor(ruutTotalWorkoutSecondsHardV1303 / 2)) return;
+
+  ruutHalfwayPlayedHardV1303 = true;
+  setCue("TURN BACK");
+  setWorkoutMessage("Halfway point. Turn back now.");
+  ruutSpeakCueHardV1303("halfway");
+}
+window.showHalfway = showHalfway;
+
+skipCurrent = function(){
+  ruutStopAllVoiceHardV1303();
+
+  // Block halfway on the transition created by this skip.
+  ruutSuppressHalfwayUntilV1304 = Date.now() + 8000;
+  ruutSkipTransitionActiveV1304 = true;
+  ruutHalfwayAllowedHardV1303 = false;
+
+  skipCurrentTimer = true;
+  workoutPaused = false;
+
+  updatePauseButton();
+  setCue("Next");
+  setTimer("NEXT");
+  setWorkoutMessage("Moving to the next step...");
+
+  if(activeTimerResolve) activeTimerResolve();
+  if(window.resolveDone){
+    try{ window.resolveDone(); }catch(e){}
+  }
+
+  // Allow the next run/walk cue, but still suppress halfway briefly.
+  setTimeout(()=>{
+    ruutSkipTransitionActiveV1304 = false;
+  },1200);
+};
+window.skipCurrent = skipCurrent;
+
+async function runSegment(label,seconds,remaining,total){
+  const startedDuringSkipSuppression = Date.now() < ruutSuppressHalfwayUntilV1304;
+
+  // Reset skip flag for this segment so the timer can run normally.
+  skipCurrentTimer = false;
+  ruutStopAllVoiceHardV1303();
+
+  setCue(label.toUpperCase());
+  setWorkoutMessage(label === "Run" ? "Stay controlled. Smooth is fast." : "Recover. Keep moving.");
+
+  // Speak exactly once for this segment.
+  await ruutSpeakCueHardV1303(label === "Run" ? "run_start" : "walk_recovery");
+
+  const started = Date.now();
+  await timer(seconds,remaining,total);
+  const elapsed = Math.max(0, Math.round((Date.now() - started) / 1000));
+
+  if(skipCurrentTimer){
+    skipCurrentTimer = false;
+    return {skipped:true, credited:0};
+  }
+
+  const credited = Math.min(seconds, elapsed || seconds);
+
+  // If this segment began immediately after a skip, it can count as work
+  // but cannot trigger halfway until a full segment has completed.
+  ruutActualWorkoutSecondsHardV1303 += credited;
+  ruutNonSkippedSegmentsV1304++;
+
+  if(startedDuringSkipSuppression){
+    return {skipped:false, credited, suppressHalfway:true};
+  }
+
+  return {skipped:false, credited, suppressHalfway:false};
+}
+window.runSegment = runSegment;
+
+async function startRun(x,readiness){
+  let total = x.total * 60;
+  if(readiness === "tired") total = Math.round(total * .8);
+
+  ruutTotalWorkoutSecondsHardV1303 = total;
+  ruutActualWorkoutSecondsHardV1303 = 0;
+  ruutHalfwayAllowedHardV1303 = false;
+  ruutHalfwayPlayedHardV1303 = false;
+  ruutNonSkippedSegmentsV1304 = 0;
+  ruutSuppressHalfwayUntilV1304 = 0;
+  ruutSkipTransitionActiveV1304 = false;
+
+  let remaining = total;
+
+  setCue("Warmup");
+  setWorkoutMessage("Warm up first. Then follow the run/walk cues.");
+
+  if(settings.warmup) await warmup();
+  if(workoutAbort) return;
+
+  ruutHalfwayAllowedHardV1303 = true;
+
+  while(remaining > 0 && !workoutAbort){
+    const runDur = Math.min(x.runSeconds, remaining);
+    const runResult = await runSegment("Run", runDur, remaining, total);
+    if(workoutAbort) return;
+
+    remaining -= runDur;
+
+    if(!runResult.skipped && !runResult.suppressHalfway){
+      showHalfway();
+    }
+
+    if(remaining <= 0) break;
+
+    const walkDur = Math.min(x.walkSeconds, remaining);
+    const walkResult = await runSegment("Walk", walkDur, remaining, total);
+    if(workoutAbort) return;
+
+    remaining -= walkDur;
+
+    if(!walkResult.skipped && !walkResult.suppressHalfway){
+      showHalfway();
+    }
+  }
+
+  ruutHalfwayAllowedHardV1303 = false;
+
+  if(settings.cooldown) await cooldown();
+  if(workoutAbort) return;
+  await finishWorkout();
+}
+window.startRun = startRun;
+
 renderAll();
