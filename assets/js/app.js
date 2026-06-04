@@ -5309,4 +5309,183 @@ async function startRun(x,readiness){
 }
 window.startRun = startRun;
 
+
+// ---------- V13.0.2 REMOVE STARTUP CUE + HARD HALFWAY LOCK ----------
+/*
+  Goal:
+  - Match old fallback behavior.
+  - Start Workout opens cockpit immediately.
+  - Warmup starts immediately.
+  - No separate workout_start audio during active workout.
+  - Halfway cannot play unless actual run/walk work time reaches midpoint.
+*/
+
+let ruutRealWorkSecondsV1302 = 0;
+let ruutTotalWorkSecondsV1302 = 0;
+let ruutHalfwayPlayedV1302 = false;
+let ruutInRealWorkoutV1302 = false;
+
+function showHalfway(){
+  if(!ruutInRealWorkoutV1302) return;
+  if(ruutHalfwayPlayedV1302) return;
+  if(!ruutTotalWorkSecondsV1302) return;
+  if(ruutRealWorkSecondsV1302 < Math.floor(ruutTotalWorkSecondsV1302 / 2)) return;
+
+  ruutHalfwayPlayedV1302 = true;
+  setCue("TURN BACK");
+  setWorkoutMessage("Halfway point. Turn back now.");
+  ruutPlayCueV130("halfway");
+}
+window.showHalfway = showHalfway;
+
+async function beginWorkout(readiness){
+  stopWorkout(false);
+  workoutAbort = false;
+  skipCurrentTimer = false;
+  workoutPaused = false;
+
+  ruutRealWorkSecondsV1302 = 0;
+  ruutTotalWorkSecondsV1302 = 0;
+  ruutHalfwayPlayedV1302 = false;
+  ruutInRealWorkoutV1302 = false;
+
+  const x = currentWorkout();
+
+  document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+  document.getElementById("workout").classList.add("active");
+  document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));
+  const navBtns = document.querySelectorAll("nav button");
+  if(navBtns[1]) navBtns[1].classList.add("active");
+
+  renderWorkout();
+  requestWakeLock();
+
+  // IMPORTANT:
+  // No workout_start cue here. Old fallback behavior moved directly into warmup.
+  // This also prevents a bad/misfiled startup clip from playing as halfway.
+
+  if(readiness === "back"){
+    setCue("Walk Only");
+    setTimer("EASY");
+    setWorkoutMessage("Back tight fallback: easy walk and mobility. Do not force the plan.");
+    ruutPlayCueV130("recovery_substitution");
+    return;
+  }
+
+  if(x.type === "run") return startRun(x,readiness);
+  if(x.type === "bodyweight") return startStrength(x,readiness);
+  return startRest(x);
+}
+window.beginWorkout = beginWorkout;
+
+startWorkout = function(){
+  ruutStopAudioV130?.();
+
+  workoutAbort = false;
+  skipCurrentTimer = false;
+  workoutPaused = false;
+
+  ruutRealWorkSecondsV1302 = 0;
+  ruutTotalWorkSecondsV1302 = 0;
+  ruutHalfwayPlayedV1302 = false;
+  ruutInRealWorkoutV1302 = false;
+
+  beginWorkout("normal");
+};
+window.startWorkout = startWorkout;
+
+async function runSegment(label,seconds,remaining,total){
+  const wasSkippedAtStart = skipCurrentTimer;
+  skipCurrentTimer = false;
+
+  setCue(label.toUpperCase());
+  setWorkoutMessage(label === "Run" ? "Stay controlled. Smooth is fast." : "Recover. Keep moving.");
+
+  // Fire audio and start timer immediately.
+  ruutPlayCueV130(label === "Run" ? "run_start" : "walk_recovery");
+
+  const started = Date.now();
+  await timer(seconds,remaining,total);
+  const actual = Math.max(0, Math.round((Date.now() - started) / 1000));
+
+  // If the user skipped, do not credit time toward halfway.
+  if(skipCurrentTimer || wasSkippedAtStart){
+    skipCurrentTimer = false;
+    return {skipped:true, credited:0};
+  }
+
+  const credited = Math.min(seconds, actual || seconds);
+  ruutRealWorkSecondsV1302 += credited;
+  return {skipped:false, credited};
+}
+window.runSegment = runSegment;
+
+async function startRun(x,readiness){
+  let total = x.total * 60;
+  if(readiness === "tired") total = Math.round(total * .8);
+
+  ruutTotalWorkSecondsV1302 = total;
+  ruutRealWorkSecondsV1302 = 0;
+  ruutHalfwayPlayedV1302 = false;
+  ruutInRealWorkoutV1302 = false;
+
+  let remaining = total;
+
+  setCue("Warmup");
+  setWorkoutMessage("Warm up first. Then follow the run/walk cues.");
+
+  if(settings.warmup) await warmup();
+  if(workoutAbort) return;
+
+  // Only now can halfway ever become possible.
+  ruutInRealWorkoutV1302 = true;
+
+  while(remaining > 0 && !workoutAbort){
+    const runDur = Math.min(x.runSeconds, remaining);
+    const runResult = await runSegment("Run", runDur, remaining, total);
+    if(workoutAbort) return;
+
+    if(!runResult.skipped){
+      remaining -= runDur;
+      showHalfway();
+    }else{
+      // Advance to next segment without counting toward halfway.
+      remaining -= runDur;
+    }
+
+    if(remaining <= 0) break;
+
+    const walkDur = Math.min(x.walkSeconds, remaining);
+    const walkResult = await runSegment("Walk", walkDur, remaining, total);
+    if(workoutAbort) return;
+
+    if(!walkResult.skipped){
+      remaining -= walkDur;
+      showHalfway();
+    }else{
+      remaining -= walkDur;
+    }
+  }
+
+  ruutInRealWorkoutV1302 = false;
+
+  if(settings.cooldown) await cooldown();
+  if(workoutAbort) return;
+  await finishWorkout();
+}
+window.startRun = startRun;
+
+const skipCurrentV1302Base = skipCurrent;
+skipCurrent = function(){
+  // Never allow Skip to trigger or count as halfway.
+  ruutInRealWorkoutV1302 = false;
+  ruutStopAudioV130?.();
+  const result = skipCurrentV1302Base();
+
+  // Re-arm real workout only after control returns to startRun loop.
+  setTimeout(()=>{},0);
+  return result;
+};
+window.skipCurrent = skipCurrent;
+
 renderAll();
