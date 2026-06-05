@@ -9,27 +9,29 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="RUUT" />
+<meta name="apple-mobile-web-app-title" content="Run Coach" />
 <meta name="theme-color" content="#050914" />
-<title>RUUT</title>
+<title>Run Coach</title>
 <link rel="stylesheet" href="./assets/css/styles.css" />
 </head>
 <body>
 <div class="app">
 <header>
-  <div class="brand"><div class="logo">R</div><div><h1>RUUT</h1><p class="muted small">Train. Live. On Purpose.</p></div></div>
+  <div class="brand"><div class="logo">R</div><div><h1>RUUT Coach</h1><p class="muted small">Adaptive personal system</p></div></div>
   <button class="secondary smallbtn" onclick="openSettings()">Settings</button>
 </header>
 <main id="today" class="screen active"></main>
 <main id="workout" class="screen"></main>
 <main id="dashboard" class="screen"></main>
 <main id="plan" class="screen"></main>
+<main id="journal" class="screen"></main>
 <main id="recover" class="screen"></main>
 <nav>
   <button class="active" onclick="showScreen('today',this)">Today</button>
   <button onclick="showScreen('workout',this)">Workout</button>
   <button onclick="showScreen('dashboard',this)">Stats</button>
   <button onclick="showScreen('plan',this)">Plan</button>
+  <button onclick="showScreen('journal',this)">Journal</button>
   <button onclick="showScreen('recover',this)">Recover</button>
 </nav>
 </div>
