@@ -648,3 +648,33 @@ body.ruut-v15 .modal button:not(.v1531-button-primary):not(.v1531-button-seconda
   border:1px solid rgba(255,255,255,.13)!important;
   box-shadow:none!important;
 }
+
+
+/* ---------- V15.4 TRAINING LOG + RECOVERY GUIDANCE ---------- */
+.v154-panel{position:relative;overflow:hidden}
+.v154-empty{padding:24px;border-style:dashed!important}
+.v154-empty h3{font-size:28px;letter-spacing:-.04em;margin:6px 0}
+.v154-empty-mini{padding:16px;border-radius:18px;background:rgba(255,255,255,.045);color:var(--muted)}
+.v154-week-bars{display:grid;gap:10px;margin-top:10px}
+.v154-week-bar{display:grid;grid-template-columns:38px 1fr 42px;gap:10px;align-items:center;font-size:12px;color:var(--muted);font-weight:800}
+.v154-week-bar div{height:10px;border-radius:999px;background:rgba(255,255,255,.09);overflow:hidden;border:1px solid rgba(255,255,255,.08)}
+.v154-week-bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#b6ff00,#e8ff77)}
+.v154-week-bar b{color:#fff;text-align:right}
+.v154-history-list{display:grid;gap:10px;margin-top:12px}
+.v154-history-row{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:14px;border-radius:20px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.11)}
+.v154-history-row strong{display:block;color:#fff;font-size:15px}
+.v154-history-row p{margin:4px 0 0;color:var(--muted);font-size:12px}
+.v154-history-row span{font-size:10px;text-transform:uppercase;font-weight:950;letter-spacing:.08em;color:#b6ff00;white-space:nowrap}
+.v154-recover-tile{min-height:132px}
+.v154-recovery-step{padding:18px;border-radius:24px;background:linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.04));border:1px solid rgba(255,255,255,.12);margin:14px 0}
+.v154-step-count{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#b6ff00;font-weight:950}
+.v154-recovery-step h3{font-size:34px;letter-spacing:-.055em;line-height:.92;margin:8px 0;color:#fff}
+.v154-duration{display:inline-flex;border-radius:999px;padding:7px 10px;background:rgba(182,255,0,.13);border:1px solid rgba(182,255,0,.28);color:#dfff73;font-size:12px;font-weight:900;margin-bottom:10px}
+.v154-recovery-step p{color:#d8e0eb;line-height:1.45}
+.v1531-actions.single{grid-template-columns:1fr;margin-top:8px}
+.v154-debrief-block{padding:14px;border-bottom:1px solid rgba(255,255,255,.08)}
+.v154-debrief-block:last-child{border-bottom:0}
+.v154-choice-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.v154-choice{width:auto!important;min-width:0!important;padding:10px 12px!important;border-radius:999px!important;background:rgba(255,255,255,.075)!important;color:#fff!important;border:1px solid rgba(255,255,255,.13)!important;box-shadow:none!important;font-size:12px!important}
+.v154-choice.selected,.choice-btn.selected{background:rgba(182,255,0,.18)!important;color:#dfff73!important;border-color:rgba(182,255,0,.45)!important}
+.v154-debrief-block textarea{min-height:110px;background:rgba(0,0,0,.28)!important;border:1px solid rgba(255,255,255,.14)!important;color:#fff!important}
