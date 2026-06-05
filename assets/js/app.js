@@ -6746,6 +6746,103 @@ window.openBriefingV110 = openBriefingV110;
   window.renderRecover = renderRecover;
 })();
 
+
+// ---------- V15.4.1 RECOVERY AUDIO + ICON POLISH ----------
+(function(){
+  function stopSpeechV1541(){
+    try{ if(window.speechSynthesis){ window.speechSynthesis.cancel(); } }catch(e){}
+    try{ if(typeof ruut14StopVoice === "function") ruut14StopVoice(); }catch(e){}
+    try{ if(window.ruut1541RecoveryUtterance){ window.ruut1541RecoveryUtterance.onend=null; window.ruut1541RecoveryUtterance.onerror=null; } }catch(e){}
+    window.ruut1541RecoveryUtterance = null;
+  }
+
+  window.ruut1541StopSpeech = stopSpeechV1541;
+
+  const baseSkipCurrentV1541 = window.skipCurrent || (typeof skipCurrent === "function" ? skipCurrent : null);
+  window.skipCurrent = function(){
+    stopSpeechV1541();
+    if(baseSkipCurrentV1541) return baseSkipCurrentV1541.apply(this, arguments);
+  };
+  try{ skipCurrent = window.skipCurrent; }catch(e){}
+
+  const baseTogglePauseV1541 = window.togglePause || (typeof togglePause === "function" ? togglePause : null);
+  window.togglePause = function(){
+    stopSpeechV1541();
+    if(baseTogglePauseV1541) return baseTogglePauseV1541.apply(this, arguments);
+  };
+  try{ togglePause = window.togglePause; }catch(e){}
+
+  window.ruut154SpeakRecoveryStep = function(){
+    const active = state.activeRecoveryV154;
+    if(!active) return;
+    const r = RECOVERY_LIBRARY_V154?.[active.id];
+    if(!r) return;
+    const step = r.steps[active.index];
+    if(!step) return;
+
+    const cue = String(step.cue || step.instruction || "").trim();
+    const text = `${step.name}. ${step.duration} seconds. ${cue.replace(new RegExp('^' + String(step.name).replace(/[.*+?^${}()|[\\]\\]/g, '\\$&') + '\\.?\\s*', 'i'), '')}`;
+
+    try{
+      stopSpeechV1541();
+      if(window.speechSynthesis){
+        window.speechSynthesis.resume();
+        const u = new SpeechSynthesisUtterance(text);
+        u.rate = settings.voiceRate || 0.95;
+        u.pitch = 1;
+        u.volume = 1;
+        try{
+          const voices = window.speechSynthesis.getVoices ? window.speechSynthesis.getVoices() : [];
+          const selected = voices.find(v => v.voiceURI === settings.voiceURI);
+          if(selected) u.voice = selected;
+        }catch(e){}
+        window.ruut1541RecoveryUtterance = u;
+        window.speechSynthesis.speak(u);
+      }
+    }catch(e){}
+  };
+
+  const baseShowRecoveryStepV1541 = window.ruut154ShowRecoveryStep;
+  window.ruut154ShowRecoveryStep = function(){
+    stopSpeechV1541();
+    if(baseShowRecoveryStepV1541) return baseShowRecoveryStepV1541.apply(this, arguments);
+  };
+
+  window.ruut154NextRecoveryStep = function(){
+    stopSpeechV1541();
+    const active = state.activeRecoveryV154;
+    if(!active) return;
+    const r = RECOVERY_LIBRARY_V154?.[active.id];
+    if(!r) return;
+    if(active.index < r.steps.length - 1){
+      active.index++;
+      saveState();
+      ruut154ShowRecoveryStep();
+    }else{
+      ruut154CompleteRecovery();
+    }
+  };
+
+  window.ruut154PrevRecoveryStep = function(){
+    stopSpeechV1541();
+    const active = state.activeRecoveryV154;
+    if(!active) return;
+    if(active.index > 0){
+      active.index--;
+      saveState();
+      ruut154ShowRecoveryStep();
+    }else{
+      ruut154ShowRecoveryStep();
+    }
+  };
+
+  const baseCompleteRecoveryV1541 = window.ruut154CompleteRecovery;
+  window.ruut154CompleteRecovery = function(){
+    stopSpeechV1541();
+    if(baseCompleteRecoveryV1541) return baseCompleteRecoveryV1541.apply(this, arguments);
+  };
+})();
+
 renderAll();
 
 // ---------- V15.3 VISUAL POLISH: MODALS + SUBWINDOWS ----------
