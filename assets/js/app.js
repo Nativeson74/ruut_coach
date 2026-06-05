@@ -6901,3 +6901,118 @@ renderAll();
       </div>`);
   };
 })();
+
+// ---------- V15.3.1 SUBWINDOW VISUAL FIX ----------
+/*
+  Corrective visual patch for v15 subwindows.
+  - Replaces old-looking Plan, Week, Settings, Set Position, and Briefing modals.
+  - Changes markup/classes only.
+  - Workout engine, cue logic, skip, halfway, and debrief saving untouched.
+*/
+(function(){
+  function esc(v){return String(v ?? "").replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));}
+  function typeLabel(type){return type==="bodyweight"?"Strength":type==="run"?"Run":type==="rest"?"Rest":(type||"Workout");}
+  function phaseForWeek(n){return n<=4?0:n<=8?1:2;}
+  function phaseData(index){
+    return [
+      {name:"Foundation",start:1,end:4,note:"Build rhythm, control, and consistency."},
+      {name:"Build",start:5,end:8,note:"Increase capacity while protecting recovery."},
+      {name:"Peak",start:9,end:12,note:"Prepare for your strongest effort."}
+    ][index] || {name:"Foundation",start:1,end:4,note:"Build rhythm, control, and consistency."};
+  }
+  function modalHero(kind,kicker,title,sub){
+    return `<div class="v1531-modal-hero ${kind||""}"><div class="v1531-kicker">${esc(kicker)}</div><h2 class="v1531-title">${esc(title)}</h2>${sub?`<div class="v1531-sub">${esc(sub)}</div>`:""}</div>`;
+  }
+
+  window.openBriefingV110 = function(){
+    const x=currentWorkout();
+    showModal(`${modalHero("workout","Workout Briefing",x.title||"Today",`${typeLabel(x.type)} · ${x.time||"Planned"}`)}
+      <div class="v1531-stack">
+        <div class="v1531-brief-item"><strong>Goal</strong><p>${esc(x.purpose||"Complete today’s workout with control.")}</p></div>
+        <div class="v1531-brief-item"><strong>Structure</strong><p>${esc(x.structure||"Follow the guided session.")}</p></div>
+        <div class="v1531-brief-item"><strong>Success</strong><p>${esc(x.success||"Finish the work cleanly.")}</p></div>
+      </div>
+      <div class="v1531-actions">
+        <button class="v1531-button-secondary" onclick="hideModal()">Done</button>
+        <button class="v1531-button-primary" onclick="hideModal();window.startWorkout()">Start Guided Workout</button>
+      </div>`);
+  };
+
+  window.ruutV15OpenPhase = function(index){
+    const ph=phaseData(index);
+    const weeks=plan.filter(w=>w.num>=ph.start&&w.num<=ph.end);
+    showModal(`${modalHero("","Training Block",ph.name,`Weeks ${ph.start}-${ph.end}. ${ph.note}`)}
+      <div class="v1531-stack">
+        ${weeks.map(w=>{
+          const active=state.week===w.num;
+          const completed=w.days.filter((d,i)=>state.completed.includes(`${w.num}-${i+1}`)).length;
+          return `<button class="v1531-week-row ${active?"active":""}" onclick="ruutV151ViewWeek(${w.num})">
+            <div><div class="v1531-kicker">${active?"Current Week":"Week "+w.num}</div><h3>Week ${w.num}: ${esc(w.theme)}</h3><p>${completed}/7 days completed</p></div><span class="v1531-chevron">›</span>
+          </button>`;
+        }).join("")}
+      </div>
+      <div class="v1531-actions single"><button class="v1531-button-secondary" onclick="hideModal()">Done</button></div>`);
+  };
+
+  window.ruutV151ViewWeek = function(weekNum){
+    const w=plan.find(x=>x.num===Number(weekNum));
+    if(!w) return;
+    showModal(`${modalHero("","Training Week",`Week ${w.num}`,w.theme)}
+      <div class="v1531-stack">
+        ${w.days.map((d,i)=>{
+          const dayIndex=i+1;
+          const key=`${w.num}-${dayIndex}`;
+          const done=state.completed.includes(key);
+          const active=state.week===w.num&&state.dayIndex===dayIndex;
+          return `<section class="v1531-day-row ${active?"active":""} ${done?"done":""}">
+            <div><div class="v1531-kicker">Day ${dayIndex} · ${esc(d.day)} · ${typeLabel(d.type)}</div><h3>${esc(d.title)}</h3><p>${esc(d.time)} · ${esc(d.structure)}</p><p>${done?"Completed":active?"Current workout":esc(d.distance||"No target")}</p></div>
+            <button class="v1531-mini" onclick="ruutV151SetToDay(${w.num},${dayIndex})">Set</button>
+          </section>`;
+        }).join("")}
+      </div>
+      <div class="v1531-actions">
+        <button class="v1531-button-secondary" onclick="ruutV15OpenPhase(${phaseForWeek(w.num)})">Back</button>
+        <button class="v1531-button-primary" onclick="hideModal()">Done</button>
+      </div>`);
+  };
+
+  window.ruutV151SetWeekDay = function(){
+    const weekOptions=plan.map(w=>`<option value="${w.num}" ${state.week===w.num?"selected":""}>Week ${w.num}: ${esc(w.theme)}</option>`).join("");
+    const dayOptions=DAYS.map((d,i)=>`<option value="${i+1}" ${state.dayIndex===i+1?"selected":""}>Day ${i+1}: ${d}</option>`).join("");
+    showModal(`${modalHero("settings","Program Position","Set Week / Day","Use this to test run days, strength days, and halfway cues.")}
+      <div class="v1531-settings-group">
+        <label class="v1531-field">Week<select id="v151Week">${weekOptions}</select></label>
+        <label class="v1531-field">Day<select id="v151Day">${dayOptions}</select></label>
+      </div>
+      <div class="v1531-actions">
+        <button class="v1531-button-secondary" onclick="hideModal()">Cancel</button>
+        <button class="v1531-button-primary" onclick="ruutV151SaveWeekDay()">Save Position</button>
+      </div>`);
+  };
+
+  window.openSettings = function(){
+    showModal(`${modalHero("settings","RUUT Control Center","Settings","Training behavior, voice, route mode, and current program position.")}
+      <div class="v1531-stack">
+        <section class="v1531-settings-group">
+          <div class="v1531-settings-title">Program</div>
+          <div class="v1531-row"><div><h3>Current Position</h3><p>Week ${state.week} · Day ${state.dayIndex}</p></div><button class="v1531-mini" onclick="ruutV151SetWeekDay()">Change</button></div>
+        </section>
+        <section class="v1531-settings-group">
+          <div class="v1531-settings-title">Coaching</div>
+          <label class="v1531-field">Coach Style<select id="setCoachStyle"><option value="trail" ${settings.coachStyle==="trail"?"selected":""}>Trail Guide</option><option value="tough" ${settings.coachStyle==="tough"?"selected":""}>Tough Love</option><option value="calm" ${settings.coachStyle==="calm"?"selected":""}>Balanced</option></select></label>
+          <label class="v1531-field">Voice Speed<select id="setVoiceRate"><option value="0.85" ${settings.voiceRate==0.85?"selected":""}>Slower</option><option value="0.95" ${settings.voiceRate==0.95?"selected":""}>Normal</option><option value="1.05" ${settings.voiceRate==1.05?"selected":""}>Faster</option></select></label>
+        </section>
+        <section class="v1531-settings-group">
+          <div class="v1531-settings-title">Workout</div>
+          <label class="v1531-field">Route Mode<select id="setRouteMode"><option value="outback" ${settings.routeMode==="outback"?"selected":""}>Out & Back</option><option value="loop" ${settings.routeMode==="loop"?"selected":""}>Loop</option><option value="treadmill" ${settings.routeMode==="treadmill"?"selected":""}>Treadmill</option><option value="trail" ${settings.routeMode==="trail"?"selected":""}>Trail</option></select></label>
+          <label class="v1531-check"><span>Warmup coaching</span><input type="checkbox" id="setWarmup" ${settings.warmup?"checked":""}></label>
+          <label class="v1531-check"><span>Cooldown coaching</span><input type="checkbox" id="setCooldown" ${settings.cooldown?"checked":""}></label>
+          <label class="v1531-check"><span>Keep screen awake</span><input type="checkbox" id="setAwake" ${settings.keepAwake?"checked":""}></label>
+        </section>
+      </div>
+      <div class="v1531-actions">
+        <button class="v1531-button-secondary" onclick="hideModal()">Cancel</button>
+        <button class="v1531-button-primary" onclick="ruutV15SaveSettings()">Save Settings</button>
+      </div>`);
+  };
+})();
