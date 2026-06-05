@@ -6585,4 +6585,165 @@ window.openBriefingV110 = openBriefingV110;
   window.ruutV15InstallShell();
 })();
 
+
+// ---------- V15.1 USABILITY FIXES ----------
+/*
+  Fixes after v15.0 field test:
+  - Restore week/day selector in Settings.
+  - Make Plan phase week rows open usable week details.
+  - Make Recover tiles start/open correct routines.
+  - Fix select/dropdown contrast on iPhone/Safari.
+  - Preserve v14.6 workout engine and v15 visual layer.
+*/
+(function(){
+  const R14 = window.ruut14Final || {};
+  window.ruut14Final = R14;
+
+  function esc(v){
+    return String(v ?? "").replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+  }
+
+  window.ruutV151SetWeekDay = function(){
+    const weekOptions = plan.map(w=>`<option value="${w.num}" ${state.week===w.num?"selected":""}>Week ${w.num}: ${esc(w.theme)}</option>`).join("");
+    const dayOptions = DAYS.map((d,i)=>`<option value="${i+1}" ${state.dayIndex===i+1?"selected":""}>Day ${i+1}: ${d}</option>`).join("");
+    showModal(`<h2>Set Current Position</h2>
+      <p class="muted">Use this to test different workout days or correct your current place in the program.</p>
+      <div class="v15-settings-list">
+        <label>Week<select id="v151Week">${weekOptions}</select></label>
+        <label>Day<select id="v151Day">${dayOptions}</select></label>
+      </div>
+      <div style="height:12px"></div>
+      <button onclick="ruutV151SaveWeekDay()">Save Position</button>
+      <div style="height:8px"></div>
+      <button class="secondary" onclick="hideModal()">Cancel</button>`);
+  };
+
+  window.ruutV151SaveWeekDay = function(){
+    const w = Number(document.getElementById("v151Week")?.value || state.week);
+    const d = Number(document.getElementById("v151Day")?.value || state.dayIndex);
+    state.week = Math.max(1, Math.min(plan.length, w));
+    state.dayIndex = Math.max(1, Math.min(7, d));
+    saveState();
+    hideModal();
+  };
+
+  window.ruutV15OpenPhase = function(index){
+    const phases = [
+      {name:"Foundation", start:1, end:4},
+      {name:"Build", start:5, end:8},
+      {name:"Peak", start:9, end:12}
+    ];
+    const ph = phases[index] || phases[0];
+    const weeks = plan.filter(w=>w.num>=ph.start && w.num<=ph.end);
+    showModal(`<h2>${ph.name}</h2>
+      <p class="muted">Weeks ${ph.start}-${ph.end}</p>
+      <div class="list" style="margin-top:12px">
+        ${weeks.map(w=>`<div class="row"><span>Week ${w.num}: ${esc(w.theme)}</span><button class="secondary smallbtn" onclick="ruutV151ViewWeek(${w.num})">View</button></div>`).join("")}
+      </div>
+      <div style="height:12px"></div>
+      <button onclick="hideModal()">Done</button>`);
+  };
+
+  window.ruutV151ViewWeek = function(weekNum){
+    const w = plan.find(x=>x.num===Number(weekNum));
+    if(!w) return;
+    showModal(`<h2>Week ${w.num}</h2>
+      <p class="muted">${esc(w.theme)}</p>
+      <div class="list" style="margin-top:12px">
+        ${w.days.map((d,i)=>{
+          const key = `${w.num}-${i+1}`;
+          const done = state.completed.includes(key);
+          const type = d.type === "bodyweight" ? "Strength" : d.type === "run" ? "Run" : "Rest";
+          return `<div class="v15-week-detail ${done?"done":""}">
+            <div>
+              <strong>Day ${i+1} · ${esc(d.day)} · ${type}</strong>
+              <p class="muted small">${esc(d.title)} · ${esc(d.time)} · ${esc(d.structure)}</p>
+            </div>
+            <button class="secondary smallbtn" onclick="ruutV151SetToDay(${w.num},${i+1})">Set</button>
+          </div>`;
+        }).join("")}
+      </div>
+      <div style="height:12px"></div>
+      <button onclick="hideModal()">Done</button>`);
+  };
+
+  window.ruutV151SetToDay = function(weekNum, dayIndex){
+    state.week = Number(weekNum);
+    state.dayIndex = Number(dayIndex);
+    saveState();
+    hideModal();
+    showScreen('today');
+  };
+
+  window.ruutV151StartRecovery = function(id){
+    const mapping = {
+      before:"dynamic-warmup",
+      after:"static-cooldown",
+      pain:"low-back-friendly",
+      flexibility:"flexibility"
+    };
+    const routineId = mapping[id] || id;
+    if(typeof startRunnerRoutineV7 === "function"){
+      startRunnerRoutineV7(routineId);
+      return;
+    }
+    showModal(`<h2>Recover</h2><p class="muted">Recovery routine engine was not found.</p><button onclick="hideModal()">Done</button>`);
+  };
+
+  R14.renderRecover = function(){
+    const host = document.getElementById("recover");
+    if(!host) return;
+    const items = [
+      ["before","Before Training","Pre-Run Mobility","Dynamic movement before a run or workout.","⚡"],
+      ["after","After Training","Post-Run Recovery","Static cooldown work after training.","☾"],
+      ["pain","Pain Relief","Low Back Reset","Gentle work for tight or irritated low back.","✚"],
+      ["flexibility","Flexibility","Mobility Builder","Slow recovery-day flexibility work.","↗"]
+    ];
+    host.innerHTML = `
+      <section class="v15-screen-head">
+        <div class="v15-kicker">Recover</div>
+        <h2>What do you need?</h2>
+        <p class="v15-muted">Choose by problem, not by exercise category.</p>
+      </section>
+      ${items.map(([id,k,t,d,icon])=>`<section class="v15-recover-tile" onclick="ruutV151StartRecovery('${id}')">
+        <div><div class="v15-kicker">${k}</div><h3>${t}</h3><p>${d}</p></div>
+        <div class="v15-recover-icon">${icon}</div>
+      </section>`).join("")}`;
+  };
+
+  window.openSettings = function(){
+    showModal(`<h2>Settings</h2>
+      <p class="muted">Training behavior and voice controls.</p>
+      <div class="v15-settings-list">
+        <label>Program Position<div class="v15-position-row"><span>Week ${state.week} · Day ${state.dayIndex}</span><button class="secondary smallbtn" onclick="ruutV151SetWeekDay()">Change</button></div></label>
+        <label>Coach Style<select id="setCoachStyle">
+          <option value="trail" ${settings.coachStyle==="trail"?"selected":""}>Trail Guide</option>
+          <option value="tough" ${settings.coachStyle==="tough"?"selected":""}>Tough Love</option>
+          <option value="calm" ${settings.coachStyle==="calm"?"selected":""}>Balanced</option>
+        </select></label>
+        <label>Route Mode<select id="setRouteMode">
+          <option value="outback" ${settings.routeMode==="outback"?"selected":""}>Out & Back</option>
+          <option value="loop" ${settings.routeMode==="loop"?"selected":""}>Loop</option>
+          <option value="treadmill" ${settings.routeMode==="treadmill"?"selected":""}>Treadmill</option>
+          <option value="trail" ${settings.routeMode==="trail"?"selected":""}>Trail</option>
+        </select></label>
+        <label>Voice Speed<select id="setVoiceRate">
+          <option value="0.85" ${settings.voiceRate==0.85?"selected":""}>Slower</option>
+          <option value="0.95" ${settings.voiceRate==0.95?"selected":""}>Normal</option>
+          <option value="1.05" ${settings.voiceRate==1.05?"selected":""}>Faster</option>
+        </select></label>
+        <label><input type="checkbox" id="setWarmup" ${settings.warmup ? "checked" : ""}> Warmup coaching</label>
+        <label><input type="checkbox" id="setCooldown" ${settings.cooldown ? "checked" : ""}> Cooldown coaching</label>
+        <label><input type="checkbox" id="setAwake" ${settings.keepAwake ? "checked" : ""}> Keep screen awake</label>
+      </div>
+      <div style="height:12px"></div>
+      <button onclick="ruutV15SaveSettings()">Save Settings</button>
+      <div style="height:8px"></div>
+      <button class="secondary" onclick="hideModal()">Cancel</button>`);
+  };
+
+  renderRecover = R14.renderRecover;
+  window.renderRecover = renderRecover;
+})();
+
 renderAll();

@@ -484,3 +484,45 @@ body.ruut-v15 select, body.ruut-v15 input, body.ruut-v15 textarea{
   .v15-timer-ring>div{width:206px;height:206px}
   body.ruut-v15 .timer{font-size:64px!important}
 }
+
+/* ---------- V15.1 USABILITY FIXES ---------- */
+.ruut-v15 select,
+.ruut-v15 option,
+.modal select,
+.modal option{
+  background:#0b1018 !important;
+  color:#f7fbff !important;
+  -webkit-text-fill-color:#f7fbff !important;
+}
+.ruut-v15 select:focus,
+.modal select:focus{
+  outline:2px solid rgba(182,255,0,.55) !important;
+  border-color:rgba(182,255,0,.55) !important;
+}
+.v15-position-row{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:10px;
+  align-items:center;
+  padding:10px 0 2px;
+}
+.v15-position-row span{
+  color:#f7fbff;
+  font-weight:850;
+}
+.v15-week-detail{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:12px;
+  align-items:center;
+  padding:12px;
+  border-radius:18px;
+  background:rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.12);
+}
+.v15-week-detail.done{
+  border-color:rgba(182,255,0,.45);
+  background:rgba(182,255,0,.08);
+}
+.v15-recover-tile{cursor:pointer}
+.v15-recover-tile:active{transform:scale(.985)}
