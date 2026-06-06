@@ -25,12 +25,14 @@
 <main id="dashboard" class="screen"></main>
 <main id="plan" class="screen"></main>
 <main id="recover" class="screen"></main>
+<main id="strength" class="screen"></main>
 <nav>
   <button class="active" onclick="showScreen('today',this)">Today</button>
   <button onclick="showScreen('workout',this)">Workout</button>
   <button onclick="showScreen('dashboard',this)">Stats</button>
   <button onclick="showScreen('plan',this)">Plan</button>
   <button onclick="showScreen('recover',this)">Recover</button>
+  <button onclick="showScreen('strength',this)">Strength</button>
 </nav>
 </div>
 <div id="modal" class="modal" onclick="closeModal(event)"><div class="card" onclick="event.stopPropagation()"><div id="modalContent"></div></div></div>

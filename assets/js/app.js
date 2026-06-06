@@ -7505,3 +7505,343 @@ renderAll();
   window.renderDashboard = R14.renderDashboard;
   window.renderRecover = R14.renderRecover;
 })();
+
+
+// ---------- V15.5 STRENGTH TRACKING FOUNDATION ----------
+(function(){
+  const R14 = window.ruut14Final || {};
+  window.ruut14Final = R14;
+
+  function esc(v){ return String(v ?? "").replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s])); }
+  function shortDateV155(){ try{return new Date().toLocaleDateString();}catch(e){return new Date().toISOString().slice(0,10);} }
+  function nowIso(){ return new Date().toISOString(); }
+
+  const DEFAULT_STRENGTH_TEMPLATES_V155 = [
+    {id:"upperA", name:"Upper A", focus:"Chest Emphasis", schedule:"Monday", notes:"Heavy pressing, balanced pulling, shoulders, arms.", exercises:[
+      ex("Barbell Bench Press",4,"6-8","Keep shoulder blades pulled back, lower under control, press without bouncing.","Use a spotter or safety arms when lifting heavy."),
+      ex("Incline Dumbbell Press",3,"8-10","Press from a slight incline. Keep elbows controlled and avoid flaring hard.","Stop if shoulders feel sharp."),
+      ex("Pull-Ups or Lat Pulldown",4,"8-12","Pull elbows down toward the ribs. Keep the chest tall and avoid swinging.","Use a controlled full range of motion."),
+      ex("Seated Cable Row",3,"10","Pull to the lower ribs, pause briefly, and control the return.","Do not yank with the low back."),
+      ex("Dumbbell Shoulder Press",3,"8-10","Brace your core, press overhead smoothly, and avoid leaning back.","Use a neutral grip if shoulders prefer it."),
+      ex("Dumbbell Lateral Raises",3,"12-15","Raise to shoulder height with soft elbows. Lead with the elbows, not the hands.","Use light weight and strict control."),
+      ex("Rope Tricep Pushdowns",3,"12","Keep elbows pinned. Extend fully and control the return.","Avoid shoulder movement."),
+      ex("EZ-Bar Curls",3,"10-12","Keep elbows quiet, curl under control, and lower slowly.","Do not swing the weight.")
+    ]},
+    {id:"lowerCore", name:"Lower + Core", focus:"Legs and Trunk", schedule:"Wednesday", notes:"Lower-body strength, durability, and core control.", exercises:[
+      ex("Barbell Squats",4,"6-8","Brace, sit between the hips, keep knees tracking with toes, and drive up strong.","Use safety arms and stop if back or knees feel sharp."),
+      ex("Romanian Deadlifts",3,"8-10","Hinge at the hips, keep a neutral back, and feel hamstrings load.","The bar stays close. Do not round the low back."),
+      ex("Walking Lunges",3,"10 each leg","Step with control, keep torso tall, and push through the front foot.","Shorten stride if knees complain."),
+      ex("Leg Curl",3,"12","Curl smoothly, pause, and control the return.","Do not throw the weight."),
+      ex("Standing Calf Raises",4,"15","Rise fully, pause at the top, and lower under control.","Use full range."),
+      ex("Hanging Knee Raises",3,"15","Tilt pelvis slightly, lift knees under control, and avoid swinging.","Use captain chair if grip limits you."),
+      ex("Cable Crunches",3,"15","Curl ribs toward hips. Keep hips quiet and control the return.","Do not pull with arms."),
+      ex("Plank",3,"60 sec","Brace abs, squeeze glutes, keep ribs down and body straight.","Stop before form collapses."),
+      ex("Side Plank",3,"30 sec each side","Stack shoulders and hips. Keep body long and controlled.","Drop to knees if needed.")
+    ]},
+    {id:"upperB", name:"Upper B", focus:"Shoulders and Arms", schedule:"Friday", notes:"Upper-body volume with shoulders and arms emphasis.", exercises:[
+      ex("Incline Barbell Bench",4,"6-8","Press from a steady base, control the descent, and keep shoulders packed.","Use a spotter or safety arms."),
+      ex("Weighted Dips or Chest Machine Press",3,"8-12","Lean slightly forward for chest. Keep shoulders down and reps controlled.","Use machine press if dips bother shoulders."),
+      ex("Chest-Supported Row",4,"8-10","Keep chest on pad and pull elbows back without shrugging.","No momentum."),
+      ex("Pull-Ups or Lat Pulldown",3,"10","Pull elbows down and keep the rib cage controlled.","No swinging."),
+      ex("Dumbbell Lateral Raises",4,"15","Move smoothly to shoulder height. Control every rep.","Light and strict beats heavy and sloppy."),
+      ex("Rear Delt Flyes",3,"15","Reach wide and slightly back. Keep traps relaxed.","Do not jerk the weight."),
+      ex("Barbell Curls",4,"10","Keep elbows near the sides and lower slowly.","No hip drive."),
+      ex("Hammer Curls",3,"12","Keep wrists neutral and curl with control.","Avoid swinging."),
+      ex("Skull Crushers",4,"10","Keep upper arms steady and lower the weight under control.","Use EZ-bar or dumbbells if elbows prefer it.")
+    ]},
+    {id:"fullBody", name:"Full Body", focus:"General Strength", schedule:"Optional", notes:"Balanced session for weeks when you need one complete gym workout.", exercises:[
+      ex("Goblet Squat",3,"10-12","Hold the weight close, sit between the hips, and stand tall.","Keep back neutral."),
+      ex("Dumbbell Bench Press",3,"8-10","Shoulders packed, lower under control, and press smoothly.","Avoid shoulder pain."),
+      ex("Lat Pulldown",3,"10-12","Pull elbows down, chest tall, and control the return.","No swinging."),
+      ex("Romanian Deadlift",3,"8-10","Hinge with neutral spine and feel hamstrings load.","Do not round back."),
+      ex("Dumbbell Shoulder Press",3,"8-10","Brace and press overhead without leaning back.","Use controlled range."),
+      ex("Farmer Carry",3,"40 yards","Stand tall, ribs down, and walk with steady control.","Do not lean side to side.")
+    ]}
+  ];
+
+  function ex(name, sets, reps, instruction, safety){ return {name, sets, reps, instruction, safety}; }
+  function clone(obj){ return JSON.parse(JSON.stringify(obj)); }
+
+  function ensureStrengthV155(){
+    state.strengthTemplates = Array.isArray(state.strengthTemplates) && state.strengthTemplates.length ? state.strengthTemplates : clone(DEFAULT_STRENGTH_TEMPLATES_V155);
+    state.liftSessions = Array.isArray(state.liftSessions) ? state.liftSessions : [];
+  }
+
+  function templateById(id){ ensureStrengthV155(); return state.strengthTemplates.find(t=>t.id===id) || state.strengthTemplates[0]; }
+  function exerciseHistory(name){
+    ensureStrengthV155();
+    const n = String(name||"").toLowerCase();
+    const rows=[];
+    state.liftSessions.forEach(s=>{
+      (s.exercises||[]).forEach(e=>{
+        if(String(e.name||"").toLowerCase()===n && Array.isArray(e.sets) && e.sets.length){
+          rows.push({session:s, exercise:e});
+        }
+      });
+    });
+    return rows.sort((a,b)=>String(b.session.iso||"").localeCompare(String(a.session.iso||"")));
+  }
+  function bestSetFor(name){
+    const sets = [];
+    exerciseHistory(name).forEach(h=>(h.exercise.sets||[]).forEach(set=>sets.push(set)));
+    if(!sets.length) return null;
+    return sets.sort((a,b)=>((b.weight||0)*(b.reps||0))-((a.weight||0)*(a.reps||0)))[0];
+  }
+  function lastSetsFor(name){
+    const h = exerciseHistory(name)[0];
+    return h ? h.exercise.sets : [];
+  }
+  function fmtSets(sets){
+    if(!sets || !sets.length) return "No previous sets";
+    return sets.map(s=>`${s.weight||0} x ${s.reps||0}`).join(", ");
+  }
+  function currentLift(){ ensureStrengthV155(); return state.activeLiftSessionV155 || null; }
+  function currentLiftExercise(){
+    const s=currentLift(); if(!s) return null;
+    return s.exercises[s.index||0] || null;
+  }
+
+  function renderStrengthTemplates(){
+    ensureStrengthV155();
+    return `<section class="v155-strength-hero">
+      <div class="v15-chip">Strength Tracking</div>
+      <h2>Lift<br>Log</h2>
+      <p class="v15-muted">Edit your workouts, log weight and reps, and keep your lifting history for next time.</p>
+    </section>
+    <section class="v15-panel">
+      <div class="v15-split"><div><div class="v15-kicker">Native Templates</div><h3>Choose a workout</h3><p class="v15-muted">Built from your Upper A / Lower + Core / Upper B plan. Edit anything and RUUT remembers it.</p></div></div>
+      <div class="v155-template-grid">
+        ${state.strengthTemplates.map(t=>`<div class="v155-template-card" onclick="ruut155OpenTemplate('${esc(t.id)}')">
+          <div class="v155-template-meta"><span>${esc(t.schedule||"Custom")}</span><span>${(t.exercises||[]).length} exercises</span></div>
+          <h3>${esc(t.name)}</h3>
+          <p>${esc(t.focus||t.notes||"")}</p>
+        </div>`).join("")}
+      </div>
+      <div style="height:12px"></div>
+      <button class="v1531-button-secondary" onclick="ruut155CreateTemplate()">Create Custom Workout</button>
+    </section>
+    ${renderStrengthHistoryPanel()}`;
+  }
+
+  function renderStrengthHistoryPanel(){
+    ensureStrengthV155();
+    const recent = state.liftSessions.slice(-5).reverse();
+    if(!recent.length){
+      return `<section class="v15-panel v155-muted-warning"><strong>No lifting history yet.</strong><br>Log your first strength workout and RUUT will show last sets, best sets, and trends here.</section>`;
+    }
+    return `<section class="v15-panel"><div class="v15-kicker">Recent Strength Sessions</div><div class="v155-history-list">
+      ${recent.map(s=>`<div class="v155-history-row"><div><strong>${esc(s.templateName)}</strong><p>${esc(s.date)} · ${(s.exercises||[]).length} exercises · ${totalSets(s)} sets</p></div><span>Saved</span></div>`).join("")}
+    </div></section>`;
+  }
+  function totalSets(s){ return (s.exercises||[]).reduce((sum,e)=>sum+(e.sets?.length||0),0); }
+
+  R14.renderStrength = function(){
+    ensureStrengthV155();
+    const host=document.getElementById("strength");
+    if(!host) return;
+    const active=currentLift();
+    if(active) host.innerHTML = renderActiveLiftSession(active);
+    else host.innerHTML = renderStrengthTemplates();
+  };
+
+  function renderActiveLiftSession(s){
+    const e = currentLiftExercise();
+    if(!e) return `<section class="v15-panel"><h2>Strength Session</h2><p class="v15-muted">No exercise found.</p><button class="v1531-button-secondary" onclick="ruut155CancelLift()">Close</button></section>`;
+    const index=(s.index||0)+1;
+    const last=lastSetsFor(e.name);
+    const best=bestSetFor(e.name);
+    return `<section class="v155-active-session">
+      <section class="v155-lift-card">
+        <div class="v15-kicker">${esc(s.templateName)} · Exercise ${index} of ${s.exercises.length}</div>
+        <h2>${esc(e.name)}</h2>
+        <div class="v155-lift-target">Target: ${esc(e.sets)} sets x ${esc(e.reps)}</div>
+        <p class="v15-muted" style="margin-top:12px">${esc(e.instruction || "Move with control and clean form.")}</p>
+        ${e.safety ? `<p class="v15-muted small" style="margin-top:8px"><strong>Safety:</strong> ${esc(e.safety)}</p>` : ""}
+        <div class="v155-set-form">
+          <label>Weight<input id="v155Weight" type="number" step="0.5" placeholder="185" value="${last?.[0]?.weight || ""}"></label>
+          <label>Reps<input id="v155Reps" type="number" step="1" placeholder="8"></label>
+        </div>
+        <div style="height:10px"></div>
+        <button class="v1531-button-primary" onclick="ruut155AddSet()">Save Set</button>
+        <div class="v155-set-list">${(e.setsDone||[]).map((set,i)=>`<div class="v155-set-row"><span>Set ${i+1}</span><strong>${esc(set.weight)} x ${esc(set.reps)}</strong></div>`).join("")}</div>
+      </section>
+      <section class="v15-panel">
+        <div class="v15-kicker">History</div>
+        <p class="v15-muted"><strong>Last time:</strong> ${esc(fmtSets(last))}</p>
+        <p class="v15-muted"><strong>Best set:</strong> ${best ? esc(`${best.weight} x ${best.reps}`) : "No best set yet"}</p>
+      </section>
+      <div class="v155-action-grid">
+        <button class="v1531-button-secondary" onclick="ruut155PrevExercise()">Previous</button>
+        <button class="v1531-button-primary" onclick="ruut155NextExercise()">Next Exercise</button>
+      </div>
+      <div class="v155-action-grid single"><button class="v1531-button-secondary" onclick="ruut155FinishLift()">Finish and Save Workout</button></div>
+    </section>`;
+  }
+
+  window.ruut155OpenTemplate = function(id){
+    const t=templateById(id);
+    showModal(`<div class="v1531-modal-head"><div class="v15-kicker">Strength Template</div><h2>${esc(t.name)}</h2><p>${esc(t.focus||t.notes||"")}</p></div>
+      <section class="v1531-group">
+        ${(t.exercises||[]).map(e=>`<div class="v1531-brief-item"><strong>${esc(e.name)}</strong><p>${esc(e.sets)} sets x ${esc(e.reps)} · ${esc(e.instruction||"")}</p></div>`).join("")}
+      </section>
+      <div class="v1531-actions"><button class="v1531-button-secondary" onclick="ruut155EditTemplate('${esc(t.id)}')">Edit</button><button class="v1531-button-primary" onclick="ruut155StartLift('${esc(t.id)}')">Start Logging</button></div>`);
+  };
+
+  window.ruut155CreateTemplate = function(){
+    ensureStrengthV155();
+    const id="custom"+Date.now();
+    state.strengthTemplates.push({id,name:"Custom Strength",focus:"User Built",schedule:"Custom",notes:"Build your own workout.",exercises:[ex("New Exercise",3,"8-10","Enter instructions for this movement.","")]});
+    saveState();
+    ruut155EditTemplate(id);
+  };
+
+  window.ruut155EditTemplate = function(id){
+    const t=templateById(id);
+    showModal(`<div class="v1531-modal-head"><div class="v15-kicker">Edit Strength Workout</div><h2>${esc(t.name)}</h2><p>Change exercises, targets, and instructions. RUUT saves this for next time.</p></div>
+      <section class="v1531-group">
+        <label class="v1531-field">Workout Name<input class="v155-template-name" id="v155TemplateName" value="${esc(t.name)}"></label>
+        <label class="v1531-field">Focus<input class="v155-template-name" id="v155TemplateFocus" value="${esc(t.focus||"")}"></label>
+        <label class="v1531-field">Scheduled Day<input class="v155-template-name" id="v155TemplateSchedule" value="${esc(t.schedule||"")}"></label>
+      </section>
+      <div id="v155ExerciseEditor">
+        ${(t.exercises||[]).map((e,i)=>editExerciseHTML(e,i)).join("")}
+      </div>
+      <div class="v1531-actions"><button class="v1531-button-secondary" onclick="ruut155AddExerciseRow()">Add Exercise</button><button class="v1531-button-primary" onclick="ruut155SaveTemplate('${esc(t.id)}')">Save Template</button></div>`);
+  };
+
+  function editExerciseHTML(e,i){
+    return `<div class="v155-exercise-edit" data-v155-exercise>
+      <label class="v1531-field">Exercise<input data-field="name" value="${esc(e.name)}"></label>
+      <div class="v155-edit-grid"><label class="v1531-field">Sets<input data-field="sets" type="number" value="${esc(e.sets||3)}"></label><label class="v1531-field">Reps<input data-field="reps" value="${esc(e.reps||"8-10")}"></label></div>
+      <label class="v1531-field">Instructions<textarea data-field="instruction">${esc(e.instruction||"")}</textarea></label>
+      <label class="v1531-field">Safety Note<textarea data-field="safety">${esc(e.safety||"")}</textarea></label>
+      <button class="v1531-button-secondary" onclick="this.closest('[data-v155-exercise]').remove()">Remove</button>
+    </div>`;
+  }
+
+  window.ruut155AddExerciseRow = function(){
+    const host=document.getElementById("v155ExerciseEditor");
+    if(host) host.insertAdjacentHTML("beforeend", editExerciseHTML(ex("New Exercise",3,"8-10","Describe how to perform this exercise.",""), 0));
+  };
+
+  window.ruut155SaveTemplate = function(id){
+    ensureStrengthV155();
+    const t=templateById(id);
+    t.name=document.getElementById("v155TemplateName")?.value || t.name;
+    t.focus=document.getElementById("v155TemplateFocus")?.value || "";
+    t.schedule=document.getElementById("v155TemplateSchedule")?.value || "Custom";
+    t.exercises=Array.from(document.querySelectorAll("[data-v155-exercise]")).map(row=>({
+      name:row.querySelector('[data-field="name"]')?.value || "Exercise",
+      sets:Number(row.querySelector('[data-field="sets"]')?.value || 3),
+      reps:row.querySelector('[data-field="reps"]')?.value || "8-10",
+      instruction:row.querySelector('[data-field="instruction"]')?.value || "Move with control and clean form.",
+      safety:row.querySelector('[data-field="safety"]')?.value || ""
+    })).filter(e=>e.name.trim());
+    saveState();
+    hideModal();
+    showScreen('strength');
+  };
+
+  window.ruut155StartLift = function(id){
+    const t=templateById(id);
+    state.activeLiftSessionV155={
+      templateId:t.id, templateName:t.name, startedAt:nowIso(), date:shortDateV155(), index:0,
+      exercises:(t.exercises||[]).map(e=>({...clone(e), setsDone:[]}))
+    };
+    saveState();
+    hideModal();
+    showScreen('strength');
+  };
+
+  window.ruut155AddSet = function(){
+    const e=currentLiftExercise(); if(!e) return;
+    const weight=Number(document.getElementById("v155Weight")?.value || 0);
+    const reps=Number(document.getElementById("v155Reps")?.value || 0);
+    if(!weight && !reps){ alert("Enter weight and reps first."); return; }
+    e.setsDone=e.setsDone||[];
+    e.setsDone.push({weight,reps,iso:nowIso()});
+    saveState();
+    R14.renderStrength();
+    setTimeout(()=>{ const w=document.getElementById("v155Weight"); if(w) w.focus(); },50);
+  };
+
+  window.ruut155NextExercise = function(){
+    const s=currentLift(); if(!s) return;
+    if((s.index||0) < s.exercises.length-1){ s.index=(s.index||0)+1; saveState(); R14.renderStrength(); }
+    else ruut155FinishLift();
+  };
+  window.ruut155PrevExercise = function(){ const s=currentLift(); if(!s) return; s.index=Math.max(0,(s.index||0)-1); saveState(); R14.renderStrength(); };
+  window.ruut155CancelLift = function(){ delete state.activeLiftSessionV155; saveState(); showScreen('strength'); };
+
+  window.ruut155FinishLift = function(){
+    const s=currentLift(); if(!s) return;
+    const saved={
+      iso:nowIso(), date:shortDateV155(), templateId:s.templateId, templateName:s.templateName,
+      exercises:s.exercises.map(e=>({name:e.name, targetSets:e.sets, targetReps:e.reps, sets:e.setsDone||[]}))
+    };
+    state.liftSessions=state.liftSessions||[];
+    state.liftSessions.push(saved);
+    delete state.activeLiftSessionV155;
+    saveState();
+    showModal(`<div class="v1531-modal-head"><div class="v15-kicker">Strength Saved</div><h2>${esc(saved.templateName)}</h2><p>${totalSets(saved)} sets logged. RUUT will show this history next time.</p></div><div class="v1531-actions single"><button class="v1531-button-primary" onclick="hideModal();showScreen('strength')">Done</button></div>`);
+  };
+
+  const oldInstall = window.ruutV15InstallShell;
+  window.ruutV15InstallShell = function(){
+    if(typeof oldInstall === "function") oldInstall();
+    let strength=document.getElementById("strength");
+    const nav=document.querySelector("nav");
+    if(!strength && nav){
+      strength=document.createElement("main"); strength.id="strength"; strength.className="screen"; nav.parentNode.insertBefore(strength, nav);
+    }
+    if(nav && !nav.querySelector('[data-target="strength"]')){
+      nav.insertAdjacentHTML("beforeend", `<button data-target="strength" onclick="showScreen('strength',this)"><b>▰</b><span>Strength</span></button>`);
+    }
+  };
+
+  const prevRenderAll = window.renderAll;
+  R14.renderAll = function(){
+    if(typeof prevRenderAll === "function") prevRenderAll();
+    R14.renderStrength();
+  };
+
+  const prevShowScreen = window.showScreen;
+  R14.showScreen = function(id, btn){
+    if(id === "strength"){
+      document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+      const screen=document.getElementById("strength"); if(screen) screen.classList.add("active");
+      document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));
+      const targetBtn = btn || document.querySelector('nav button[data-target="strength"]');
+      if(targetBtn) targetBtn.classList.add("active");
+      R14.renderStrength();
+      return;
+    }
+    if(typeof prevShowScreen === "function") return prevShowScreen(id, btn);
+  };
+
+  const prevDashboard = window.renderDashboard;
+  R14.renderDashboard = function(){
+    if(typeof prevDashboard === "function") prevDashboard();
+    ensureStrengthV155();
+    const host=document.getElementById("dashboard"); if(!host) return;
+    document.getElementById("v155StrengthStats")?.remove();
+    const sessions=state.liftSessions||[];
+    const last=sessions[sessions.length-1];
+    host.insertAdjacentHTML("beforeend", `<section id="v155StrengthStats" class="v15-panel">
+      <div class="v15-kicker">Strength Progress</div>
+      ${sessions.length ? `<div class="v15-metric-grid"><div><span>Sessions</span><strong>${sessions.length}</strong></div><div><span>Total Sets</span><strong>${sessions.reduce((n,s)=>n+totalSets(s),0)}</strong></div></div><div class="v155-history-list"><div class="v155-history-row"><div><strong>Last Lift</strong><p>${esc(last.templateName)} · ${esc(last.date)} · ${totalSets(last)} sets</p></div><span>Logged</span></div></div>` : `<div class="v154-empty-mini">No strength sessions logged yet. Use the Strength tab to start tracking weight, reps, and sets.</div>`}
+    </section>`);
+  };
+
+  renderStrength = R14.renderStrength;
+  renderAll = R14.renderAll;
+  showScreen = R14.showScreen;
+  renderDashboard = R14.renderDashboard;
+  window.renderStrength = renderStrength;
+  window.renderAll = renderAll;
+  window.showScreen = showScreen;
+  window.renderDashboard = renderDashboard;
+  window.ruutV15InstallShell();
+  ensureStrengthV155();
+  R14.renderStrength();
+})();

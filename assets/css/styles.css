@@ -678,3 +678,48 @@ body.ruut-v15 .modal button:not(.v1531-button-primary):not(.v1531-button-seconda
 .v154-choice{width:auto!important;min-width:0!important;padding:10px 12px!important;border-radius:999px!important;background:rgba(255,255,255,.075)!important;color:#fff!important;border:1px solid rgba(255,255,255,.13)!important;box-shadow:none!important;font-size:12px!important}
 .v154-choice.selected,.choice-btn.selected{background:rgba(182,255,0,.18)!important;color:#dfff73!important;border-color:rgba(182,255,0,.45)!important}
 .v154-debrief-block textarea{min-height:110px;background:rgba(0,0,0,.28)!important;border:1px solid rgba(255,255,255,.14)!important;color:#fff!important}
+
+
+/* ---------- V15.5 STRENGTH TRACKING FOUNDATION ---------- */
+body.ruut-v15 .v155-strength-hero{
+  position:relative;overflow:hidden;min-height:240px;border-radius:34px;padding:22px;
+  display:flex;flex-direction:column;justify-content:flex-end;
+  background:
+    linear-gradient(180deg,rgba(0,0,0,.08),rgba(0,0,0,.84)),
+    url("https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&w=900&q=80");
+  background-size:cover;background-position:center;
+  border:1px solid rgba(255,255,255,.12);box-shadow:0 24px 70px rgba(0,0,0,.42)
+}
+body.ruut-v15 .v155-strength-hero h2{font-size:58px!important;line-height:.82!important;letter-spacing:-.07em!important;text-transform:uppercase!important;margin:8px 0!important;color:#fff!important}
+body.ruut-v15 .v155-template-grid{display:grid;gap:12px;margin-top:14px}
+body.ruut-v15 .v155-template-card,
+body.ruut-v15 .v155-lift-card,
+body.ruut-v15 .v155-set-row,
+body.ruut-v15 .v155-history-row{
+  border-radius:24px;border:1px solid rgba(255,255,255,.12);background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.035));box-shadow:0 14px 44px rgba(0,0,0,.30)
+}
+body.ruut-v15 .v155-template-card{padding:18px;display:grid;gap:12px;cursor:pointer}
+body.ruut-v15 .v155-template-card h3{font-size:28px!important;line-height:.9!important;letter-spacing:-.045em!important;margin:0!important;text-transform:uppercase;color:#fff!important}
+body.ruut-v15 .v155-template-card p{color:#aeb8c5;margin:0;font-size:13px;line-height:1.38}
+body.ruut-v15 .v155-template-meta{display:flex;flex-wrap:wrap;gap:8px}
+body.ruut-v15 .v155-template-meta span{font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.08em;color:#dfff73;border:1px solid rgba(182,255,0,.28);background:rgba(182,255,0,.10);border-radius:999px;padding:7px 9px}
+body.ruut-v15 .v155-active-session{display:grid;gap:14px}
+body.ruut-v15 .v155-lift-card{padding:20px;text-align:center}
+body.ruut-v15 .v155-lift-card h2{font-size:54px!important;line-height:.84!important;letter-spacing:-.07em!important;text-transform:uppercase!important;margin:8px 0!important;color:#fff!important}
+body.ruut-v15 .v155-lift-target{display:inline-flex;border-radius:999px;padding:8px 12px;background:rgba(182,255,0,.13);border:1px solid rgba(182,255,0,.28);color:#dfff73;font-weight:950;font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+body.ruut-v15 .v155-set-form{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+body.ruut-v15 .v155-set-form label{display:grid;gap:6px;color:#aeb8c5;font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:950;text-align:left}
+body.ruut-v15 .v155-set-form input{height:54px!important;border-radius:18px!important;background:rgba(0,0,0,.32)!important;border:1px solid rgba(255,255,255,.14)!important;color:#fff!important;font-size:24px!important;font-weight:900!important;text-align:center!important}
+body.ruut-v15 .v155-set-list{display:grid;gap:8px;margin-top:12px}
+body.ruut-v15 .v155-set-row{padding:12px 14px;display:flex;justify-content:space-between;align-items:center;color:#fff;font-weight:900}
+body.ruut-v15 .v155-set-row span{color:#aeb8c5;font-size:12px;font-weight:800}
+body.ruut-v15 .v155-action-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.v155-action-grid.single{grid-template-columns:1fr}
+body.ruut-v15 .v155-history-list{display:grid;gap:10px;margin-top:12px}
+body.ruut-v15 .v155-history-row{padding:14px;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center}
+body.ruut-v15 .v155-history-row strong{color:#fff;display:block}.v155-history-row p{margin:4px 0 0;color:#aeb8c5;font-size:12px}
+body.ruut-v15 .v155-exercise-edit{padding:14px;border-radius:22px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);display:grid;gap:9px;margin-bottom:10px}
+body.ruut-v15 .v155-exercise-edit input,body.ruut-v15 .v155-exercise-edit textarea,body.ruut-v15 .v155-template-name{background:#101720!important;color:white!important;border:1px solid rgba(255,255,255,.14)!important;border-radius:15px!important}
+body.ruut-v15 .v155-edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+body.ruut-v15 .v155-muted-warning{padding:14px;border:1px dashed rgba(255,255,255,.18);border-radius:22px;color:#aeb8c5;background:rgba(255,255,255,.035);font-size:13px;line-height:1.4}
+body.ruut-v15 nav button[data-target="strength"].active{color:var(--v15-lime)!important;background:rgba(182,255,0,.14)!important}
+@media(max-width:390px){body.ruut-v15 .v155-strength-hero h2,body.ruut-v15 .v155-lift-card h2{font-size:44px!important}.v155-set-form,.v155-action-grid{grid-template-columns:1fr!important}}
