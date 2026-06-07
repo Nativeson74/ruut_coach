@@ -7845,3 +7845,382 @@ renderAll();
   ensureStrengthV155();
   R14.renderStrength();
 })();
+
+
+// ---------- COACH V16 GOAL-BASED TRAINING + WEIGHT TRACKING ----------
+(function(){
+  const R14 = window.ruut14Final || window.R14 || {};
+  const APP_NAME_V16 = "COACH";
+
+  const goalsV16 = {
+    hybrid:{name:"Hybrid Athlete",phase:"Build",focus:"Strength, endurance, recovery, and body composition.",milestone:"Complete a balanced week of running, strength, and recovery."},
+    muscle:{name:"Build Muscle",phase:"Foundation",focus:"Progressive overload, recovery, and consistency.",milestone:"Complete three strength sessions this week."},
+    fatloss:{name:"Lose Fat",phase:"Foundation",focus:"Consistency, weight trend, strength retention, and sustainable conditioning.",milestone:"Log weight 5 days and complete planned training."},
+    endurance:{name:"13-Mile Endurance",phase:"Build",focus:"Aerobic capacity, long-run durability, and controlled pacing.",milestone:"Complete the next long run without overreaching."},
+    general:{name:"General Fitness",phase:"Foundation",focus:"Balanced health, movement quality, and steady routine.",milestone:"Complete three training days this week."},
+    maintain:{name:"Maintain Fitness",phase:"Maintain",focus:"Stay capable, healthy, and consistent without excess stress.",milestone:"Complete two quality sessions and one recovery session."}
+  };
+
+  function c16Esc(v){
+    return String(v ?? "").replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
+  }
+  function c16TodayISO(){
+    const d=new Date();
+    const off=d.getTimezoneOffset();
+    const local=new Date(d.getTime()-off*60000);
+    return local.toISOString().slice(0,10);
+  }
+  function c16ShortDate(){
+    try{return new Date().toLocaleDateString(undefined,{month:"numeric",day:"numeric",year:"2-digit"});}catch(e){return c16TodayISO();}
+  }
+  function c16Ensure(){
+    state.coachV16 = state.coachV16 || {};
+    state.coachV16.goal = state.coachV16.goal || "hybrid";
+    state.coachV16.started = state.coachV16.started || c16TodayISO();
+    state.weightLogV16 = state.weightLogV16 || [];
+  }
+  function c16Goal(){
+    c16Ensure();
+    return goalsV16[state.coachV16.goal] || goalsV16.hybrid;
+  }
+  function c16WeightEntries(){
+    c16Ensure();
+    return (state.weightLogV16 || []).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  }
+  function c16LatestWeight(){
+    const entries=c16WeightEntries();
+    return entries.length ? entries[entries.length-1] : null;
+  }
+  function c16WeightChange(){
+    const entries=c16WeightEntries();
+    if(entries.length < 2) return null;
+    const first=Number(entries[0].weight);
+    const last=Number(entries[entries.length-1].weight);
+    if(!first || !last) return null;
+    const diff=last-first;
+    return {diff, label:`${diff>0?"+":""}${diff.toFixed(1)} lb`};
+  }
+  function c16Spark(){
+    const entries=c16WeightEntries().slice(-14).filter(e=>Number(e.weight));
+    if(entries.length < 2) return `<div class="v15-muted">Log two or more weights to show a trend.</div>`;
+    const vals=entries.map(e=>Number(e.weight));
+    const min=Math.min(...vals), max=Math.max(...vals);
+    return `<div class="coach-v16-mini-chart">${vals.map(v=>{
+      const pct=max===min ? 45 : 18 + ((v-min)/(max-min))*68;
+      return `<span title="${v.toFixed(1)} lb" style="height:${pct}%"></span>`;
+    }).join("")}</div>`;
+  }
+  function c16CompletionPercent(){
+    try{
+      if(typeof progressPercent === "function") return progressPercent();
+      return Math.round(((state.completed||[]).length/84)*100);
+    }catch(e){return 0;}
+  }
+  function c16PhaseForWeek(){
+    const w=Number(state.week||1);
+    if(w<=4) return "Foundation";
+    if(w<=8) return "Build";
+    if(w<=12) return "Peak";
+    return "Maintain";
+  }
+  function c16WorkoutTypeLabel(x){
+    if(!x) return "Training";
+    if(x.type==="bodyweight") return "Bodyweight Exercise";
+    if(x.type==="run") return "Run Workout";
+    if(x.type==="rest") return "Recovery Day";
+    return String(x.type||"Training");
+  }
+  function c16ModalHero(kicker,title,sub){
+    return `<div class="v1531-modal-head">
+      <div class="v15-kicker">${c16Esc(kicker)}</div>
+      <h2>${c16Esc(title)}</h2>
+      <p>${c16Esc(sub||"")}</p>
+    </div>`;
+  }
+
+  const oldInstallV16 = window.ruutV15InstallShell;
+  window.ruutV15InstallShell = function(){
+    if(typeof oldInstallV16 === "function") oldInstallV16();
+    document.body.classList.add("coach-v16");
+    const word=document.querySelector(".v15-wordmark"); if(word) word.textContent=APP_NAME_V16;
+    const sub=document.querySelector(".v15-subbrand"); if(sub) sub.textContent="Train With Purpose.";
+    const logo=document.querySelector(".logo"); if(logo) logo.textContent="C";
+    const h1=document.querySelector("header h1"); if(h1) h1.textContent=APP_NAME_V16;
+    const small=document.querySelector("header .brand .muted"); if(small) small.textContent="Train With Purpose.";
+    document.querySelectorAll("nav button").forEach(btn=>{
+      const span=btn.querySelector("span");
+      const label=(span?span.textContent:btn.textContent).trim().toLowerCase();
+      if(label==="plan"){
+        if(span) span.textContent="Goals";
+        else btn.textContent="Goals";
+      }
+    });
+    document.title=APP_NAME_V16;
+  };
+
+  window.coachV16SetGoal = function(goal){
+    c16Ensure();
+    if(!goalsV16[goal]) goal="hybrid";
+    state.coachV16.goal = goal;
+    saveState();
+    hideModal();
+    showScreen("plan");
+  };
+
+  window.coachV16OpenGoalPicker = function(){
+    c16Ensure();
+    showModal(`${c16ModalHero("Goal System","Choose Your Goal","COACH organizes today's mission, progress, and recommendations around this goal.")}
+      <div class="coach-v16-goal-grid">
+        ${Object.entries(goalsV16).map(([id,g])=>`<button class="coach-v16-goal-card ${state.coachV16.goal===id?"active":""}" onclick="coachV16SetGoal('${id}')">
+          <div class="coach-v16-badge">${state.coachV16.goal===id?"Active":"Goal"}</div>
+          <h3>${c16Esc(g.name)}</h3>
+          <p class="v15-muted">${c16Esc(g.focus)}</p>
+        </button>`).join("")}
+      </div>
+      <div class="v1531-actions single"><button class="v1531-button-secondary" onclick="hideModal()">Cancel</button></div>`);
+  };
+
+  window.coachV16SaveWeight = function(){
+    c16Ensure();
+    const val=Number(document.getElementById("coachV16WeightInput")?.value || 0);
+    const date=document.getElementById("coachV16WeightDate")?.value || c16TodayISO();
+    if(!val){ alert("Enter a weight first."); return; }
+    state.weightLogV16 = (state.weightLogV16||[]).filter(e=>e.date!==date);
+    state.weightLogV16.push({date,weight:val,iso:new Date().toISOString()});
+    state.weightLogV16.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+    saveState();
+    hideModal();
+    try{ renderAll(); }catch(e){}
+  };
+
+  window.coachV16OpenWeight = function(){
+    c16Ensure();
+    const latest=c16LatestWeight();
+    const todayExisting=(state.weightLogV16||[]).find(e=>e.date===c16TodayISO());
+    const val=todayExisting?.weight || latest?.weight || "";
+    showModal(`${c16ModalHero("Weight Tracking","Today's Weight","One number. No calorie counting. COACH uses the trend for long-term progress.")}
+      <label class="small muted">Date</label>
+      <input id="coachV16WeightDate" type="date" value="${c16TodayISO()}">
+      <div style="height:10px"></div>
+      <label class="small muted">Weight</label>
+      <input id="coachV16WeightInput" type="number" step="0.1" inputmode="decimal" placeholder="191.8" value="${c16Esc(val)}">
+      <div class="coach-v16-actions">
+        <button class="v1531-button-primary" onclick="coachV16SaveWeight()">Save Weight</button>
+        <button class="v1531-button-secondary" onclick="hideModal()">Cancel</button>
+      </div>`);
+  };
+
+  window.coachV16WeightDetail = function(){
+    c16Ensure();
+    const entries=c16WeightEntries().slice(-30).reverse();
+    showModal(`${c16ModalHero("Weight Trend","Body Weight Log", entries.length ? "Recent entries saved locally on this device." : "No weight entries yet.")}
+      ${entries.length ? `<div class="v155-history-list">${entries.map(e=>`<div class="v155-history-row"><div><strong>${c16Esc(e.weight)} lb</strong><p>${c16Esc(e.date)}</p></div><span>Saved</span></div>`).join("")}</div>` : `<div class="v154-empty-mini">Add your first daily weight from Today or Stats.</div>`}
+      <div class="coach-v16-actions"><button class="v1531-button-primary" onclick="hideModal();coachV16OpenWeight()">Add Weight</button><button class="v1531-button-secondary" onclick="hideModal()">Close</button></div>`);
+  };
+
+  const prevTodayV16 = window.renderToday;
+  R14.renderToday = function(){
+    c16Ensure();
+    const today=document.getElementById("today"); if(!today) return;
+    try{ if(typeof runDailyMaintenanceV101 === "function") runDailyMaintenanceV101(); }catch(e){}
+    const x=currentWorkout();
+    const goal=c16Goal();
+    const wt=c16LatestWeight();
+    const change=c16WeightChange();
+    const pct=c16CompletionPercent();
+    today.innerHTML = `
+      <section class="v15-today-hero coach-v16-hero">
+        <div class="v15-hero-bg"></div>
+        <div class="v15-hero-shade"></div>
+        <div class="v15-hero-content">
+          <div>
+            <div class="coach-v16-badge">COACH · ${c16Esc(goal.name)}</div>
+            <div class="v15-meta-line">${c16ShortDate()} · Week ${state.week} · Day ${state.dayIndex} · ${c16Esc(goal.phase || c16PhaseForWeek())}</div>
+            <h2 class="v15-hero-title">${c16Esc(c16WorkoutTypeLabel(x))}</h2>
+            <div class="v15-hero-subtitle">${c16Esc(x?.title || "Today's Mission")}</div>
+          </div>
+          <div class="v15-hero-bottom">
+            <button class="v15-primary-action" onclick="window.startWorkout()">Start Guided Workout</button>
+            <button class="v15-round-action" onclick="window.openBriefingV110 ? window.openBriefingV110() : null">→</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="coach-v16-goal-hero">
+        <div class="coach-v16-badge">Current Goal</div>
+        <h2>${c16Esc(goal.name)}</h2>
+        <p class="v15-muted">${c16Esc(goal.focus)}</p>
+        <div class="v15-metric-grid" style="margin-top:14px">
+          <div><span>Phase</span><strong>${c16Esc(goal.phase || c16PhaseForWeek())}</strong></div>
+          <div><span>Progress</span><strong>${pct}%</strong></div>
+        </div>
+        <div class="v1531-actions single" style="margin-top:14px"><button class="v1531-button-secondary" onclick="coachV16OpenGoalPicker()">Change Goal</button></div>
+      </section>
+
+      <section class="coach-v16-weight-card">
+        <div>
+          <div class="v15-kicker">Body Weight</div>
+          <div class="coach-v16-weight-number">${wt ? `${Number(wt.weight).toFixed(1)} lb` : "Not logged"}</div>
+          <p class="v15-muted">${wt ? `Last entry: ${c16Esc(wt.date)}${change ? ` · ${change.label} since start` : ""}` : "Add today's weight to start a trend."}</p>
+        </div>
+        <button class="v15-round-action" onclick="coachV16OpenWeight()">+</button>
+      </section>
+
+      <section class="v15-panel v15-coach-card">
+        <div class="v15-kicker">Next Milestone</div>
+        <h3>${c16Esc(goal.milestone)}</h3>
+        <p class="v15-muted">${c16Esc(x?.success || "Show up, move well, and finish the work.")}</p>
+      </section>
+    `;
+  };
+
+  R14.renderPlan = function(){
+    c16Ensure();
+    const host=document.getElementById("plan"); if(!host) return;
+    const goal=c16Goal();
+    const pct=c16CompletionPercent();
+    const phase=c16PhaseForWeek();
+    const phases=[
+      {name:"Foundation",range:"Weeks 1-4",start:1,end:4},
+      {name:"Build",range:"Weeks 5-8",start:5,end:8},
+      {name:"Peak",range:"Weeks 9-12",start:9,end:12},
+      {name:"Maintain",range:"Ongoing",start:13,end:99}
+    ];
+    host.innerHTML = `
+      <section class="v15-screen-head">
+        <div class="v15-kicker">Goals</div>
+        <h2>COACH Plan</h2>
+        <p class="v15-muted">Goal → Phase → Today's Mission.</p>
+      </section>
+
+      <section class="coach-v16-goal-hero">
+        <div class="coach-v16-badge">Active Goal</div>
+        <h2>${c16Esc(goal.name)}</h2>
+        <p class="v15-muted">${c16Esc(goal.focus)}</p>
+        <div class="v15-metric-grid" style="margin-top:14px">
+          <div><span>Current Phase</span><strong>${c16Esc(goal.phase || phase)}</strong></div>
+          <div><span>Completion</span><strong>${pct}%</strong></div>
+        </div>
+        <div class="coach-v16-actions">
+          <button class="v1531-button-primary" onclick="coachV16OpenGoalPicker()">Change Goal</button>
+          <button class="v1531-button-secondary" onclick="openSetPosition ? openSetPosition() : null">Set Week/Day</button>
+        </div>
+      </section>
+
+      ${phases.map((p,i)=>{
+        const active=state.week>=p.start && state.week<=p.end;
+        const width=active ? Math.min(100, Math.max(10, ((state.week-p.start+1)/(p.end-p.start+1))*100)) : state.week>p.end ? 100 : 0;
+        return `<section class="v15-phase ${active ? "active" : ""}" onclick="ruutV15OpenPhase(${Math.min(i,2)})">
+          <div class="v15-phase-bg"></div>
+          <div class="v15-phase-content">
+            <div class="v15-chip">${active ? "Current Phase" : "Training Block"}</div>
+            <h3>${c16Esc(p.name)}</h3>
+            <p>${c16Esc(p.range)}</p>
+            <div class="v15-phase-progress"><div style="width:${width}%"></div></div>
+          </div>
+        </section>`;
+      }).join("")}
+    `;
+  };
+
+  const prevDashV16 = window.renderDashboard;
+  R14.renderDashboard = function(){
+    if(typeof prevDashV16 === "function") prevDashV16();
+    c16Ensure();
+    const host=document.getElementById("dashboard"); if(!host) return;
+    document.getElementById("coachV16Stats")?.remove();
+    const goal=c16Goal(), wt=c16LatestWeight(), change=c16WeightChange();
+    host.insertAdjacentHTML("afterbegin", `<section id="coachV16Stats" class="v15-panel">
+      <div class="v15-kicker">COACH Overview</div>
+      <h3>${c16Esc(goal.name)}</h3>
+      <p class="v15-muted">${c16Esc(goal.focus)}</p>
+      <div class="v15-metric-grid">
+        <div><span>Phase</span><strong>${c16Esc(goal.phase || c16PhaseForWeek())}</strong></div>
+        <div><span>Weight</span><strong>${wt ? Number(wt.weight).toFixed(1) : "—"}</strong></div>
+      </div>
+      <div style="margin-top:12px">${c16Spark()}</div>
+      <p class="v15-muted small" style="margin-top:8px">${wt ? `Last weight: ${c16Esc(wt.date)}${change ? ` · ${change.label} since start` : ""}` : "No weight entries yet."}</p>
+      <div class="coach-v16-actions">
+        <button class="v1531-button-primary" onclick="coachV16OpenWeight()">Add Weight</button>
+        <button class="v1531-button-secondary" onclick="coachV16WeightDetail()">View Log</button>
+      </div>
+    </section>`);
+  };
+
+  const prevOpenSettingsV16 = window.openSettings;
+  window.openSettings = function(){
+    c16Ensure();
+    populateVoices?.();
+    const opts=(voices||[]).map(v=>`<option value="${c16Esc(v.voiceURI)}" ${settings.voiceURI===v.voiceURI?"selected":""}>${c16Esc(v.name)} ${c16Esc(v.lang)}</option>`).join("");
+    showModal(`${c16ModalHero("COACH Control Center","Settings","Goal, voice, route mode, and training behavior.")}
+      <div class="setting-group glass">
+        <div class="setting-row"><span>Active Goal</span><button class="select-pill" onclick="hideModal();coachV16OpenGoalPicker()">${c16Esc(c16Goal().name)} ▾</button></div>
+        <div class="setting-row"><span>Today's Weight</span><button class="select-pill" onclick="hideModal();coachV16OpenWeight()">Add ▾</button></div>
+      </div>
+      <div class="setting-group glass">
+        <div class="setting-row"><span>Coach Style</span><select class="coach-v16-modal-select" id="coachStyle"><option value="trail" ${settings.coachStyle==="trail"?"selected":""}>Trail Guide</option><option value="calm" ${settings.coachStyle==="calm"?"selected":""}>Calm Coach</option><option value="tough" ${settings.coachStyle==="tough"?"selected":""}>Tough Love</option></select></div>
+        <div class="setting-row"><span>Voice</span><select class="coach-v16-modal-select" id="voiceSelect"><option value="">System Default</option>${opts}</select></div>
+        <div class="setting-row"><span>Voice Speed</span><select class="coach-v16-modal-select" id="voiceRate"><option value=".85" ${settings.voiceRate==.85?"selected":""}>Slow</option><option value=".95" ${settings.voiceRate==.95?"selected":""}>Normal</option><option value="1.05" ${settings.voiceRate==1.05?"selected":""}>Brisk</option></select></div>
+        <div class="setting-row"><span>Route Mode</span><select class="coach-v16-modal-select" id="routeMode"><option value="outback" ${settings.routeMode==="outback"?"selected":""}>Out and Back: Halfway Cue</option><option value="loop" ${settings.routeMode==="loop"?"selected":""}>Loop: No Turnaround Cue</option><option value="treadmill" ${settings.routeMode==="treadmill"?"selected":""}>Treadmill</option><option value="trail" ${settings.routeMode==="trail"?"selected":""}>Trail</option></select></div>
+      </div>
+      <div class="setting-group glass">
+        <div class="setting-row"><span>Warmup Coaching</span><input id="warmup" type="checkbox" ${settings.warmup?"checked":""}></div>
+        <div class="setting-row"><span>Cooldown Coaching</span><input id="cooldown" type="checkbox" ${settings.cooldown?"checked":""}></div>
+        <div class="setting-row"><span>Keep Screen Awake</span><input id="keepAwake" type="checkbox" ${settings.keepAwake?"checked":""}></div>
+        <input id="adaptive" type="checkbox" ${settings.adaptive?"checked":""} style="display:none">
+      </div>
+      <div class="coach-v16-actions">
+        <button class="v1531-button-primary" onclick="saveSettingsFromModal()">Save</button>
+        <button class="v1531-button-secondary" onclick="openSetPosition()">Set Week/Day</button>
+      </div>
+      <div class="coach-v16-actions">
+        <button class="v1531-button-secondary" onclick="testVoice()">Test Voice</button>
+        <button class="v1531-button-secondary" onclick="confirmReset()">Reset Program</button>
+      </div>`);
+  };
+
+  const oldTestVoiceV16 = window.testVoice || testVoice;
+  window.testVoice = function(){
+    try{ saveSettingsFromModal(); }catch(e){}
+    try{ speak("This is COACH. Train with purpose. Stay steady and do the work."); }catch(e){}
+  };
+
+  R14.renderAll = function(){
+    c16Ensure();
+    R14.renderToday();
+    renderWorkout();
+    R14.renderDashboard();
+    R14.renderPlan();
+    renderRecover();
+    if(typeof R14.renderStrength === "function") R14.renderStrength();
+  };
+
+  const prevShowV16 = window.showScreen;
+  R14.showScreen = function(id,btn){
+    if(id==="plan"){
+      document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+      const screen=document.getElementById("plan"); if(screen) screen.classList.add("active");
+      document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));
+      const b=btn || document.querySelector('nav button[data-target="plan"]') || Array.from(document.querySelectorAll("nav button")).find(x=>/goals|plan/i.test(x.textContent));
+      if(b) b.classList.add("active");
+      R14.renderPlan();
+      return;
+    }
+    if(typeof prevShowV16 === "function") return prevShowV16(id,btn);
+  };
+
+  renderToday=R14.renderToday;
+  renderPlan=R14.renderPlan;
+  renderDashboard=R14.renderDashboard;
+  renderAll=R14.renderAll;
+  showScreen=R14.showScreen;
+  window.renderToday=renderToday;
+  window.renderPlan=renderPlan;
+  window.renderDashboard=renderDashboard;
+  window.renderAll=renderAll;
+  window.showScreen=showScreen;
+
+  c16Ensure();
+  window.ruutV15InstallShell();
+  try{ renderAll(); }catch(e){ console.warn("COACH v16 render failed", e); }
+})();

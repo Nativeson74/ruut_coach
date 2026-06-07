@@ -1,13 +1,13 @@
 {
-  "name": "RUUT Coach",
-  "short_name": "RUUT",
-  "description": "Adaptive running, strength, recovery, and endurance coaching system.",
+  "name": "COACH",
+  "short_name": "COACH",
+  "description": "Goal-based training, strength, recovery, and progress tracking.",
   "display": "standalone",
   "orientation": "portrait",
   "start_url": "./",
   "scope": "./",
-  "background_color": "#050914",
-  "theme_color": "#050914",
+  "background_color": "#05070A",
+  "theme_color": "#05070A",
   "icons": [
     {
       "src": "./icon-192.png",
