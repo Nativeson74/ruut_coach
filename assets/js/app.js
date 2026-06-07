@@ -8598,3 +8598,78 @@ renderAll();
   window.renderAll=renderAll=function(){shell();todayStable();goalsStable();statsStable();try{if(typeof renderWorkout==="function")renderWorkout();}catch(e){}try{if(typeof renderRecover==="function")renderRecover();}catch(e){}try{if(typeof renderStrength==="function")renderStrength();}catch(e){}};
   shell();const active=document.querySelector(".screen.active")?.id||"today";if(active==="today")todayStable();if(active==="plan")goalsStable();if(active==="dashboard")statsStable();
 })();
+
+
+// ---------- COACH V16.1.2 RENDER LOCK ----------
+(function(){
+  /*
+    Locks COACH renderers into both global window functions and the legacy R14 object.
+    This prevents older delayed R14.renderToday/renderDashboard/renderPlan calls from repainting v15/RUUT screens.
+  */
+  function lockWhenReady(){
+    const R = window.ruut14Final || window.R14 || null;
+    if(!R || typeof window.renderToday !== "function" || typeof window.renderPlan !== "function" || typeof window.renderDashboard !== "function"){
+      setTimeout(lockWhenReady, 100);
+      return;
+    }
+
+    const coachToday = window.renderToday;
+    const coachPlan = window.renderPlan;
+    const coachDashboard = window.renderDashboard;
+    const coachShow = window.showScreen;
+    const coachRenderAll = window.renderAll;
+
+    R.renderToday = coachToday;
+    R.renderPlan = coachPlan;
+    R.renderDashboard = coachDashboard;
+    R.showScreen = coachShow;
+    R.renderAll = coachRenderAll;
+
+    window.renderToday = coachToday;
+    window.renderPlan = coachPlan;
+    window.renderDashboard = coachDashboard;
+    window.showScreen = coachShow;
+    window.renderAll = coachRenderAll;
+
+    try{
+      document.body.classList.add("coach-v16");
+      document.querySelectorAll(".v15-wordmark").forEach(e=>e.textContent="COACH");
+      document.querySelectorAll(".v15-subbrand").forEach(e=>e.textContent="Train With Purpose.");
+      document.querySelectorAll("nav button").forEach(btn=>{
+        const span=btn.querySelector("span");
+        const label=(span?span.textContent:btn.textContent).trim().toLowerCase();
+        if(label==="plan"){ if(span) span.textContent="Goals"; else btn.textContent="Goals"; }
+      });
+    }catch(e){}
+
+    const active = document.querySelector(".screen.active")?.id || "today";
+    if(active === "today") coachToday();
+    if(active === "plan") coachPlan();
+    if(active === "dashboard") coachDashboard();
+
+    // A short defensive lock window catches old setTimeout render calls still pending from earlier layers.
+    let count = 0;
+    const id = setInterval(()=>{
+      count++;
+      R.renderToday = coachToday;
+      R.renderPlan = coachPlan;
+      R.renderDashboard = coachDashboard;
+      R.showScreen = coachShow;
+      R.renderAll = coachRenderAll;
+      window.renderToday = coachToday;
+      window.renderPlan = coachPlan;
+      window.renderDashboard = coachDashboard;
+      window.showScreen = coachShow;
+      window.renderAll = coachRenderAll;
+
+      const current = document.querySelector(".screen.active")?.id || "today";
+      if(current === "today") coachToday();
+      if(current === "plan") coachPlan();
+      if(current === "dashboard") coachDashboard();
+
+      if(count >= 8) clearInterval(id);
+    }, 250);
+  }
+
+  lockWhenReady();
+})();
