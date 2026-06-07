@@ -1,0 +1,68 @@
+314:function testVoice(){saveSettingsFromModal();speak("This is your RUUT coach. Smooth, steady, and built for the long run.")}
+932:    outback:{title:"Out & Back",tip:"Halfway cue is active. Turn around when RUUT tells you."},
+933:    loop:{title:"Loop",tip:"No turnaround cue. RUUT will give time-remaining cues."},
+934:    treadmill:{title:"Treadmill",tip:"Use effort, not ego. RUUT will cue posture, breathing, and control."},
+1187:// Purpose: keep RUUT from dropping back to Week 1 Day 1, allow fast jumps,
+1198:  // JavaScript: Sun=0, Mon=1 ... Sat=6. RUUT: Mon=1 ... Sun=7.
+1304:    helper.innerHTML=`<h3>Calendar Helper</h3><p class="muted">Today is ${todayName}. RUUT is currently set to Week ${state.week}, Day ${state.dayIndex} - ${x.day}. ${aligned?"You are aligned with today's weekday.":"If this is wrong, set RUUT to today's weekday."}</p><div class="grid two"><button class="secondary" onclick="openSetPosition()">Set Position</button><button class="secondary" onclick="setProgramPosition(state.week, weekdayIndexFromDate())">Use Today's Day</button></div>`;
+1339:  showModal(`<h2>Workout Complete</h2><p class="muted" style="margin:10px 0 18px">Completed: Week ${finishedSnapshot.week}, Day ${finishedSnapshot.dayIndex} - ${finishedSnapshot.title}</p>${advanced?`<div class="detail"><strong>Auto-Advanced</strong><p class="muted">RUUT is now set to Week ${state.week}, Day ${state.dayIndex} - ${currentWorkout().day}.</p></div><div style="height:10px"></div>`:""}<button onclick="hideModal();openReflectionV9()">Reflect</button><div style="height:8px"></div><button class="secondary" onclick="hideModal()">Done</button>`);
+1975:            RUUT now tracks fatigue trends and may automatically reduce workload or recommend recovery days if pain/fatigue patterns increase.
+2089:    <p class="muted" style="margin:8px 0 12px">Paste the report from your RUUT Readiness Shortcut.</p>
+2129:  showModal(`<h2>RUUT Readiness</h2>
+2169:        <p class="muted">Run your RUUT Readiness Shortcut, then paste the report here.</p>
+2245:      <p class="muted">Run your RUUT Readiness Shortcut, then paste the report here.</p>
+2270:  if(!r) return "Run your RUUT Readiness Shortcut and paste the report here.";
+2346:  showModal(`<h2>RUUT Readiness</h2>
+2394:  if(readinessLevelV96()==="red") return "Readiness is Red, so RUUT is replacing intensity with recovery.";
+2395:  if(/distance/i.test(flags)) return "High distance yesterday. RUUT is reducing today’s training stress.";
+2396:  if(/resting/i.test(flags)) return "Resting heart rate is elevated. RUUT is keeping intensity controlled.";
+2397:  if(/sleep/i.test(flags)) return "Sleep is low. RUUT is reducing intensity and protecting recovery.";
+2398:  if(/exercise load/i.test(flags)) return "Exercise load was high yesterday. RUUT is backing off slightly.";
+2399:  if(readinessLevelV96()==="yellow") return "Readiness is Yellow. RUUT is reducing today’s workload.";
+2480:      <p class="muted">Paste your RUUT Readiness report to let RUUT adjust today’s workout.</p>
+2662:    return "Debrief history is still building. Save a few workout debriefs and RUUT will start recognizing patterns.";
+2666:    return "Pain has shown up more than once recently. RUUT should prioritize recovery and avoid intensity until this clears.";
+2670:    return "Heavy legs or very hard efforts are trending. RUUT should reduce volume before adding more load.";
+2718:      w.adaptiveReason = "Recent workout debriefs show heavy legs or very hard efforts. RUUT is reducing today’s run slightly.";
+2731:      w.adaptiveReason = "Recent debriefs show fatigue. RUUT is reducing strength volume slightly.";
+2787:      line:"Readiness is Yellow. RUUT should favor controlled effort over extra intensity.",
+2803:      line:"No workout debriefs logged yet. Save a few debriefs after workouts so RUUT can start learning from your actual effort.",
+2837:    recommendation = "You are adapting well. Stay disciplined today, and if the workout still feels easy, RUUT may be ready for progression soon.";
+3015:      summary = "Recent feedback suggests accumulated stress. RUUT should reduce load before pushing progression.";
+3021:      summary = "Recent workouts are trending manageable with no issues. RUUT can safely consider a small progression.";
+3276:  // RUUT's training day rolls over at 12:01 AM.
+3423:    console.warn("RUUT daily maintenance failed", e);
+3516:      message:"Recent missed or skipped workouts detected. RUUT will prioritize getting you back on rhythm before increasing load."
+3537:    s.summary = "Recent missed workouts show rhythm has slipped. RUUT should hold progression until consistency returns.";
+3545:    s.summary = "Readiness history shows repeated Red days. RUUT should reduce load and prioritize recovery.";
+3566:    <p class="muted small">RUUT resets at 12:01 AM. If today's workout is not completed by then, it is logged as missed and the plan advances.</p>
+3764:      <div class="detail"><strong>RUUT Plan</strong><p class="muted">${p.proposed.title}<br>${p.proposed.time || ""}</p></div>
+3769:      `<button onclick="approveDynamicPlanV102()">Apply RUUT Plan</button><div style="height:8px"></div><button class="secondary" onclick="showDynamicPlanDetailV102()">View Reasoning</button>`}
+3783:  showModal(`<h2>RUUT Plan Applied</h2>
+3793:    <p class="muted">RUUT will use the original scheduled workout for today.</p>
+3807:    <div class="detail"><strong>RUUT Plan</strong><p class="muted">${p.proposed.title}<br>${p.proposed.time || ""}<br>${p.proposed.structure || ""}</p></div>
+3822:    ${d.mode !== "HOLD" && !p.approved ? `<button onclick="hideModal();approveDynamicPlanV102()">Apply RUUT Plan</button><div style="height:8px"></div>` : ""}
+3867:    <p class="muted" style="margin:8px 0 12px">Set the coaching context RUUT should remember when making decisions.</p>
+3916:  if(total>=21 && deb>=6 && ready>=5) return {label:"High",reason:"RUUT has enough readiness, completion, and debrief history to make stronger recommendations."};
+3917:  if(total>=8 && deb>=2) return {label:"Moderate",reason:"RUUT has some useful history, but recommendations should still be treated as guidance."};
+3918:  return {label:"Low",reason:"RUUT is still learning. Use recommendations carefully until more workouts and readiness reports are logged."};
+3933:  else if(s.counts.Completed+s.counts["Modified Workout"]>=4 && pain===0 && red===0) assessment="Consistency looks strong. RUUT can continue steady progression if workouts remain controlled.";
+4017:  card.innerHTML=`<strong>Workout Status Types</strong><p class="muted small">RUUT now separates Completed, Modified Workout, Recovery Substitution, Planned Rest, Missed, and Skipped so the coach logic can tell the difference.</p>`;
+4051:    <p class="muted">RUUT no longer uses pasted Apple Health readiness reports because the Shortcut data was not accurate enough.</p>
+4074:    line:"Apple Health readiness import is disabled. RUUT is using your workout history, debriefs, missed days, and coach memory instead.",
+4080:  return "Readiness import is disabled. RUUT now adapts from your real training behavior and post-workout feedback.";
+4105:    : {label:"Low",reason:"RUUT is still learning."};
+4123:  let summary = "RUUT is using debriefs, missed workouts, recovery substitutions, and completion history. Current signals do not justify increasing load yet.";
+4132:    summary = "Recent debriefs or recovery substitutions show fatigue risk. RUUT should reduce load before adding more stress.";
+4137:    summary = "Recent missed or skipped workouts show rhythm has slipped. RUUT should rebuild consistency before progressing.";
+4142:    summary = "Recent workouts are trending manageable with no reported issues. RUUT can consider a small controlled progression.";
+4170:    <p class="muted">RUUT is no longer using pasted Apple Health readiness reports.</p>
+4187:    <p class="muted small">RUUT resets at 12:01 AM. If today's workout is not completed by then, it is logged as missed and the plan advances.</p>
+6297:          <div class="v15-wordmark">RUUT</div>
+6955:        <div class="v15-kicker">RUUT Control Center</div>
+7091:    showModal(`${modalHero("settings","RUUT Control Center","Settings","Training behavior, voice, route mode, and current program position.")}
+7219:        <p class="v15-muted">Complete workouts, save debriefs, or finish recovery sessions to unlock honest trend data. RUUT will not show fake progress charts.</p>
+7612:      <div class="v15-split"><div><div class="v15-kicker">Native Templates</div><h3>Choose a workout</h3><p class="v15-muted">Built from your Upper A / Lower + Core / Upper B plan. Edit anything and RUUT remembers it.</p></div></div>
+7630:      return `<section class="v15-panel v155-muted-warning"><strong>No lifting history yet.</strong><br>Log your first strength workout and RUUT will show last sets, best sets, and trends here.</section>`;
+7700:    showModal(`<div class="v1531-modal-head"><div class="v15-kicker">Edit Strength Workout</div><h2>${esc(t.name)}</h2><p>Change exercises, targets, and instructions. RUUT saves this for next time.</p></div>
+7786:    showModal(`<div class="v1531-modal-head"><div class="v15-kicker">Strength Saved</div><h2>${esc(saved.templateName)}</h2><p>${totalSets(saved)} sets logged. RUUT will show this history next time.</p></div><div class="v1531-actions single"><button class="v1531-button-primary" onclick="hideModal();showScreen('strength')">Done</button></div>`);

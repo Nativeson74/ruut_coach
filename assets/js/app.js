@@ -8224,3 +8224,111 @@ renderAll();
   window.ruutV15InstallShell();
   try{ renderAll(); }catch(e){ console.warn("COACH v16 render failed", e); }
 })();
+
+
+// ---------- COACH V16.0.1 VISUAL + GOAL LOGIC CORRECTION ----------
+(function(){
+  const APP_NAME = "COACH";
+  const GOALS = {
+    hybrid:{name:"Hybrid Athlete",phase:"Build",priority:"Balanced",load:"Standard",note:"Blend strength, endurance, and recovery. Build capacity without specializing too narrowly.",milestone:"Complete a balanced week: run, lift, recover."},
+    muscle:{name:"Build Muscle",phase:"Build",priority:"Strength",load:"Strength biased",note:"Prioritize progressive overload. Running stays supportive so it does not sabotage lifting recovery.",milestone:"Complete three strength-focused sessions this week."},
+    fatloss:{name:"Lose Fat",phase:"Foundation",priority:"Consistency",load:"Sustainable",note:"Use repeatable training, steady conditioning, and daily weight trend. Preserve strength while body weight comes down.",milestone:"Log weight and complete today’s planned movement."},
+    endurance:{name:"13-Mile Endurance",phase:"Build",priority:"Running",load:"Endurance biased",note:"Running is the primary driver. Strength supports durability, posture, hips, and injury resistance.",milestone:"Protect the long run and stack easy miles."},
+    general:{name:"General Fitness",phase:"Foundation",priority:"Balanced Health",load:"Moderate",note:"Stay capable, mobile, and consistent without chasing extremes.",milestone:"Complete three training days this week."},
+    maintain:{name:"Maintain Fitness",phase:"Maintain",priority:"Preservation",load:"Reduced",note:"Keep the rhythm, avoid unnecessary stress, and maintain capacity.",milestone:"Complete two quality sessions and one recovery session."}
+  };
+  function esc16(v){return String(v ?? "").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
+  function clone16(v){try{return structuredClone(v);}catch(e){return JSON.parse(JSON.stringify(v));}}
+  function todayISO16(){const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10);}
+  function shortDate16(){try{return new Date().toLocaleDateString(undefined,{month:"numeric",day:"numeric",year:"2-digit"});}catch(e){return todayISO16();}}
+  function ensure16(){state.coachV16=state.coachV16||{};state.coachV16.goal=state.coachV16.goal||"hybrid";state.weightLogV16=state.weightLogV16||[];}
+  function goalId16(){ensure16();return GOALS[state.coachV16.goal]?state.coachV16.goal:"hybrid";}
+  function goal16(){return GOALS[goalId16()]||GOALS.hybrid;}
+  function weights16(){ensure16();return (state.weightLogV16||[]).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));}
+  function latestWeight16(){const w=weights16();return w[w.length-1]||null;}
+  function weightChange16(){const w=weights16();if(w.length<2)return null;const a=Number(w[0].weight),b=Number(w[w.length-1].weight);if(!a||!b)return null;const d=b-a;return `${d>0?"+":""}${d.toFixed(1)} lb`;}
+  function pct16(){try{return typeof progressPercent==="function"?progressPercent():Math.round(((state.completed||[]).length/84)*100);}catch(e){return 0;}}
+  function label16(x){if(!x)return"Training";if(x.type==="bodyweight")return"Bodyweight Exercise";if(x.type==="run")return"Run Workout";if(x.type==="rest")return"Recovery Day";return String(x.type||"Training");}
+
+  const baseCurrentWorkout16 = window.__coachBaseCurrentWorkout1601 || currentWorkout;
+  window.__coachBaseCurrentWorkout1601 = baseCurrentWorkout16;
+
+  function adjustedWorkout16(){
+    const base = clone16(baseCurrentWorkout16());
+    const id=goalId16(), g=goal16();
+    base.goalId=id;base.goalName=g.name;base.goalPriority=g.priority;base.goalNote=g.note;base.goalMilestone=g.milestone;
+    if(id==="muscle"){
+      if(base.type==="run"){base.title="Support Cardio";base.structure="Easy Zone 2 cardio. Keep it controlled and save hard effort for lifting.";base.purpose="Support fat loss and heart health without interfering with strength progression.";base.effort="Easy to moderate. You should finish fresh.";if(Number(base.total))base.total=Math.min(Number(base.total),30);}
+      else if(base.type==="bodyweight"){base.title="Strength Development";base.structure=(base.structure||"Strength work")+" · Add one controlled round if form stays sharp.";base.purpose="Build muscle, joint control, and progressive strength.";base.effort="Controlled and strong. Leave one or two reps in reserve.";if(Number(base.rounds))base.rounds=Number(base.rounds)+1;}
+    }
+    if(id==="fatloss"){
+      if(base.type==="run"){base.title="Fat-Loss Conditioning";base.structure="Steady conditioning. No racing. Burn calories while protecting recovery.";base.purpose="Improve conditioning and support weight trend consistency.";base.effort="Sustainable. Finish able to do more.";if(Number(base.total))base.total=Number(base.total)+5;}
+      else if(base.type==="bodyweight"){base.title="Metabolic Strength";base.structure="Move cleanly with shorter rests. Keep form strict.";base.purpose="Preserve muscle and raise daily training output.";}
+    }
+    if(id==="endurance"){
+      if(base.type==="run"){base.title=base.day==="Sat"?"Endurance Long Run":"Endurance Builder";base.structure=(base.structure||"Run/walk")+" · Keep the first half patient.";base.purpose="Build the aerobic engine for the 13-mile goal.";base.effort="Easy enough to repeat. Do not race training.";if(Number(base.total)&&base.day==="Sat")base.total=Number(base.total)+5;}
+      else if(base.type==="bodyweight"){base.title="Runner Strength";base.structure="Strength support for hips, trunk, legs, and posture.";base.purpose="Build durability for running without creating excessive soreness.";if(Number(base.rounds))base.rounds=Math.max(1,Number(base.rounds)-1);}
+    }
+    if(id==="general"){base.title=base.type==="run"?"General Fitness Run":base.type==="bodyweight"?"General Strength":"Recovery Day";base.purpose="Build a reliable base of health, mobility, and consistency.";base.effort="Moderate and controlled.";if(Number(base.total))base.total=Math.max(20,Math.round(Number(base.total)*0.9));}
+    if(id==="maintain"){base.title=base.type==="run"?"Maintenance Run":base.type==="bodyweight"?"Maintenance Strength":"Recovery Day";base.purpose="Maintain capacity without accumulating unnecessary stress.";base.effort="Controlled. Stop before fatigue gets expensive.";if(Number(base.total))base.total=Math.max(20,Math.round(Number(base.total)*0.75));if(Number(base.rounds))base.rounds=Math.max(1,Math.round(Number(base.rounds)*0.75));}
+    return base;
+  }
+  currentWorkout = adjustedWorkout16; window.currentWorkout = currentWorkout;
+
+  function repaintShell16(){
+    document.body.classList.add("coach-v16");
+    document.title=APP_NAME;
+    document.querySelectorAll(".v15-wordmark").forEach(e=>e.textContent=APP_NAME);
+    document.querySelectorAll(".v15-subbrand").forEach(e=>e.textContent="Train With Purpose.");
+    document.querySelectorAll("header h1").forEach(e=>e.textContent=APP_NAME);
+    document.querySelectorAll(".logo").forEach(e=>e.textContent="C");
+    document.querySelectorAll("nav button").forEach(btn=>{const span=btn.querySelector("span");const t=(span?span.textContent:btn.textContent).trim().toLowerCase();if(t==="plan"){if(span)span.textContent="Goals";else btn.textContent="Goals";}});
+  }
+
+  function renderToday1601(){
+    ensure16();repaintShell16();
+    const today=document.getElementById("today"); if(!today)return;
+    const x=currentWorkout(), g=goal16(), wt=latestWeight16(), ch=weightChange16(), pct=pct16();
+    today.innerHTML=`
+      <section class="v15-today-hero coach-v16-hero">
+        <div class="v15-hero-bg"></div><div class="v15-hero-shade"></div>
+        <div class="v15-hero-content"><div><div class="coach-v16-badge">${APP_NAME} · ${esc16(g.name)}</div><div class="v15-meta-line">${shortDate16()} · Week ${state.week} · Day ${state.dayIndex} · ${esc16(g.phase)}</div><h2 class="v15-hero-title">${esc16(label16(x))}</h2><div class="v15-hero-subtitle">${esc16(x.title||"Today's Mission")}</div></div><div class="v15-hero-bottom"><button class="v15-primary-action" onclick="window.startWorkout()">Start Guided Workout</button><button class="v15-round-action" onclick="window.openBriefingV110 ? window.openBriefingV110() : null">→</button></div></div>
+      </section>
+      <section class="coach-v16-goal-adjustment"><div class="coach-v16-badge">Goal-Aware Training</div><h3>${esc16(g.name)} · ${esc16(g.priority)}</h3><p class="v15-muted">${esc16(x.goalNote||g.note)}</p><div class="coach-v16-priority-row"><div><span>Today’s Bias</span><strong>${esc16(x.goalPriority||g.priority)}</strong></div><div><span>Training Load</span><strong>${esc16(g.load)}</strong></div></div></section>
+      <section class="coach-v16-weight-card"><div><div class="v15-kicker">Body Weight</div><div class="coach-v16-weight-number">${wt?`${Number(wt.weight).toFixed(1)} lb`:"Not logged"}</div><p class="v15-muted">${wt?`Last entry: ${esc16(wt.date)}${ch?` · ${ch} since start`:""}`:"Add today's weight to start a trend."}</p></div><button class="v15-round-action" onclick="coachV16OpenWeight()">+</button></section>
+      <section class="v15-panel v15-coach-card"><div class="v15-kicker">Next Milestone</div><h3>${esc16(x.goalMilestone||g.milestone)}</h3><p class="v15-muted">${esc16(x.success || "Complete the work with control.")}</p></section>`;
+  }
+
+  function renderPlan1601(){
+    ensure16();repaintShell16();
+    const host=document.getElementById("plan"); if(!host)return;
+    const g=goal16(), pct=pct16();
+    const phases=[["Foundation","Build reliable habits and clean movement."],["Build","Increase capacity through repeatable work."],["Peak","Express the goal with controlled intensity."],["Maintain","Keep the standard and stay healthy."]];
+    host.innerHTML=`<section class="v15-screen-head"><div class="v15-kicker">Goals</div><h2>${APP_NAME} Plan</h2><p class="v15-muted">Goal → Phase → Today's Mission.</p></section><section class="coach-v16-goal-hero"><div class="coach-v16-badge">Active Goal</div><h2>${esc16(g.name)}</h2><p class="v15-muted">${esc16(g.note)}</p><div class="v15-metric-grid" style="margin-top:14px"><div><span>Phase</span><strong>${esc16(g.phase)}</strong></div><div><span>Progress</span><strong>${pct}%</strong></div></div><div class="coach-v16-actions"><button class="v1531-button-primary" onclick="coachV16OpenGoalPicker()">Change Goal</button><button class="v1531-button-secondary" onclick="openSetPosition ? openSetPosition() : null">Set Week/Day</button></div></section>${phases.map((p,i)=>`<section class="v15-phase ${g.phase===p[0]?"active":""}"><div class="v15-phase-bg"></div><div class="v15-phase-content"><div class="v15-chip">${g.phase===p[0]?"Current Phase":"Training Phase"}</div><h3>${p[0]}</h3><p>${p[1]}</p><div class="v15-phase-progress"><div style="width:${g.phase===p[0]?pct:(i*25)}%"></div></div></div></section>`).join("")}`;
+  }
+
+  const prevDashboard1601 = window.renderDashboard;
+  function renderDashboard1601(){
+    if(typeof prevDashboard1601==="function")prevDashboard1601();
+    ensure16();repaintShell16();
+    const host=document.getElementById("dashboard"); if(!host)return;
+    document.getElementById("coachV1601Stats")?.remove();
+    const g=goal16(), wt=latestWeight16(), ch=weightChange16();
+    host.insertAdjacentHTML("afterbegin",`<section id="coachV1601Stats" class="v15-panel"><div class="v15-kicker">COACH Overview</div><h3>${esc16(g.name)}</h3><p class="v15-muted">${esc16(g.note)}</p><div class="v15-metric-grid"><div><span>Priority</span><strong>${esc16(g.priority)}</strong></div><div><span>Weight</span><strong>${wt?Number(wt.weight).toFixed(1):"—"}</strong></div></div><p class="v15-muted small" style="margin-top:10px">${wt?`Last weight: ${esc16(wt.date)}${ch?` · ${ch}`:""}`:"No weight entries yet."}</p><div class="coach-v16-actions"><button class="v1531-button-primary" onclick="coachV16OpenWeight()">Add Weight</button><button class="v1531-button-secondary" onclick="coachV16OpenGoalPicker()">Change Goal</button></div></section>`);
+  }
+
+  renderToday = renderToday1601; renderPlan = renderPlan1601; renderDashboard = renderDashboard1601;
+  window.renderToday = renderToday; window.renderPlan = renderPlan; window.renderDashboard = renderDashboard;
+
+  const previousShow1601 = window.showScreen;
+  showScreen = function(id,btn){if(typeof previousShow1601==="function")previousShow1601(id,btn);repaintShell16();if(id==="today")setTimeout(renderToday1601,0);if(id==="plan")setTimeout(renderPlan1601,0);if(id==="dashboard")setTimeout(renderDashboard1601,0);};
+  window.showScreen = showScreen;
+
+  const previousRenderAll1601 = window.renderAll;
+  renderAll = function(){if(typeof previousRenderAll1601==="function")previousRenderAll1601();repaintShell16();setTimeout(()=>{renderToday1601();renderPlan1601();renderDashboard1601();},0);};
+  window.renderAll = renderAll;
+
+  repaintShell16();
+  setTimeout(()=>{renderToday1601();renderPlan1601();renderDashboard1601();},50);
+  setTimeout(()=>{renderToday1601();renderPlan1601();renderDashboard1601();},500);
+})();

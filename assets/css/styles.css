@@ -860,3 +860,23 @@ body.ruut-v15 nav button[data-target="strength"].active{color:var(--v15-lime)!im
   .coach-v16-goal-grid{grid-template-columns:1fr}
   .coach-v16-goal-hero h2{font-size:38px}
 }
+
+
+/* ---------- COACH v16.0.1 VISUAL + GOAL LOGIC POLISH ---------- */
+.coach-v16 .v15-wordmark,.ruut-v15 .v15-wordmark{color:#f7ffe8!important;text-shadow:0 0 22px rgba(182,255,0,.22)}
+.coach-v16 .v15-subbrand{color:#b6ff00!important;font-weight:850!important;letter-spacing:.025em!important}
+.coach-v16 .v15-today-hero.coach-v16-hero{min-height:405px!important;border-radius:34px!important;border:1px solid rgba(182,255,0,.28)!important;box-shadow:0 30px 90px rgba(0,0,0,.52), inset 0 0 0 1px rgba(255,255,255,.05)!important}
+.coach-v16 .v15-today-hero.coach-v16-hero .v15-hero-bg{background:linear-gradient(180deg,rgba(0,0,0,.16),rgba(0,0,0,.48) 48%,rgba(0,0,0,.92)),radial-gradient(circle at 85% 5%,rgba(182,255,0,.22),transparent 34%),url("https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&w=1200&q=80") center/cover!important;filter:saturate(1.05) contrast(1.05)!important}
+.coach-v16 .v15-today-hero.coach-v16-hero::after{content:"COACH";position:absolute;right:18px;top:16px;font-size:12px;letter-spacing:.18em;color:rgba(182,255,0,.9);font-weight:950;z-index:2}
+.coach-v16 .coach-v16-badge{background:rgba(182,255,0,.14)!important;border-color:rgba(182,255,0,.44)!important;color:#b6ff00!important;box-shadow:0 0 26px rgba(182,255,0,.08)}
+.coach-v16 .coach-v16-goal-hero{border-color:rgba(182,255,0,.28)!important}
+.coach-v16 .coach-v16-goal-hero h2{text-transform:uppercase}
+.coach-v16 .coach-v16-weight-card{border-color:rgba(255,255,255,.16)!important}
+.coach-v16-goal-adjustment{border-radius:26px;padding:16px;border:1px solid rgba(182,255,0,.24);background:radial-gradient(circle at 100% 0%,rgba(182,255,0,.12),transparent 38%),linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.035))}
+.coach-v16-goal-adjustment h3{margin:8px 0 6px!important;font-size:24px!important;letter-spacing:-.045em!important}
+.coach-v16-priority-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.coach-v16-priority-row div{border-radius:18px;padding:12px;background:rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.09)}
+.coach-v16-priority-row span{display:block;color:#aeb8c6;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.08em}
+.coach-v16-priority-row strong{display:block;margin-top:4px;color:#f6f8fb}
+.coach-v16 nav button[data-target="plan"] span{color:#b6ff00!important}
+@media(max-width:420px){.coach-v16-priority-row{grid-template-columns:1fr}.coach-v16 .v15-today-hero.coach-v16-hero{min-height:380px!important}}
