@@ -8526,3 +8526,75 @@ renderAll();
 
   setTimeout(()=>{try{renderToday();renderPlan();}catch(e){console.warn("COACH v16.1 render failed",e);}},300);
 })();
+
+
+// ---------- COACH V16.1.1 STABLE RENDER FIX ----------
+(function(){
+  const APP_NAME="COACH";
+  const DAYS=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+  const GOALS={
+    hybrid:{label:"Hybrid Athlete",phase:"Build",priority:"Balanced",load:"Standard",note:"Blend strength, endurance, and recovery. Build capacity without specializing too narrowly."},
+    muscle:{label:"Build Muscle",phase:"Build",priority:"Strength",load:"Strength biased",note:"Prioritize progressive overload. Running supports the goal without stealing recovery from lifting."},
+    fatloss:{label:"Lose Fat",phase:"Foundation",priority:"Consistency",load:"Sustainable",note:"Use repeatable strength, conditioning, and weight trend to drive fat loss without burning out."},
+    endurance:{label:"13-Mile Endurance",phase:"Build",priority:"Running",load:"Endurance biased",note:"Running is the main driver. Strength supports durability and injury resistance."},
+    general:{label:"General Fitness",phase:"Foundation",priority:"Balanced Health",load:"Moderate",note:"Build useful fitness, mobility, and consistency without chasing extremes."},
+    maintain:{label:"Maintain Fitness",phase:"Maintain",priority:"Preservation",load:"Reduced",note:"Keep the rhythm, protect recovery, and maintain capacity."}
+  };
+  function esc(v){return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
+  function ensure(){state.coachV16=state.coachV16||{};state.coachV16.goal=state.coachV16.goal||"hybrid";state.weightLogV16=state.weightLogV16||[];}
+  function gid(){ensure();return GOALS[state.coachV16.goal]?state.coachV16.goal:"hybrid";}
+  function goal(){return GOALS[gid()]||GOALS.hybrid;}
+  function dindex(){return Math.max(1,Math.min(7,Number(state.dayIndex||1)));}
+  function latestWeight(){ensure();const w=(state.weightLogV16||[]).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));return w[w.length-1]||null;}
+  function pct(){try{return typeof progressPercent==="function"?progressPercent():Math.round(((state.completed||[]).length/84)*100);}catch(e){return 0;}}
+  function dateLabel(){try{return new Date().toLocaleDateString(undefined,{month:"numeric",day:"numeric",year:"2-digit"});}catch(e){return new Date().toISOString().slice(0,10);}}
+  const WEEKLY={
+    muscle:["Upper A","Support Cardio","Lower + Core","Recovery","Upper B","Conditioning","Recovery"],
+    hybrid:["Upper A","Easy Run","Lower + Core","Intervals","Upper B","Long Run","Recovery"],
+    fatloss:["Full Body","Zone 2 Cardio","Lower + Core","Conditioning","Upper B","Long Easy Cardio","Recovery"],
+    endurance:["Easy Run","Runner Strength","Intervals / Hills","Recovery","Steady Run","Long Run","Recovery"],
+    general:["Full Body","Easy Cardio","Mobility + Core","Full Body","Easy Run","Outdoor Session","Recovery"],
+    maintain:["Full Body","Easy Cardio","Recovery","Full Body","Easy Run","Optional Activity","Recovery"]
+  };
+  function schedule(){return WEEKLY[gid()]||WEEKLY.hybrid;}
+  function todayTitle(){return schedule()[dindex()-1]||"Recovery";}
+  function typeFromTitle(t){if(/Upper|Lower|Full Body/.test(t))return"lift";if(/Recovery|Mobility|Optional/.test(t))return"rest";return"run";}
+  function templateFromTitle(t){if(t==="Upper A")return"upperA";if(t==="Lower + Core")return"lowerCore";if(t==="Upper B")return"upperB";if(t==="Full Body")return"fullBody";return"";}
+  function activeWorkout(){
+    const title=todayTitle(), type=typeFromTitle(title);
+    if(type==="lift")return{type,title,templateId:templateFromTitle(title),structure:`${title} strength session`,purpose:"Build strength through progressive overload.",success:"Complete the planned lifts and save the session."};
+    if(type==="rest")return{type,title,structure:"Recovery, mobility, stretching, walking, or full rest.",purpose:"Recover so training can continue.",success:"Finish feeling better."};
+    return{type,title,structure:title,purpose:"Build conditioning in support of the selected goal.",success:"Finish controlled."};
+  }
+  function shell(){
+    document.body.classList.add("coach-v16");document.title=APP_NAME;
+    document.querySelectorAll(".v15-wordmark").forEach(e=>e.textContent=APP_NAME);
+    document.querySelectorAll(".v15-subbrand").forEach(e=>e.textContent="Train With Purpose.");
+    document.querySelectorAll("header h1").forEach(e=>e.textContent=APP_NAME);
+    document.querySelectorAll(".logo").forEach(e=>e.textContent="C");
+    document.querySelectorAll("nav button").forEach(btn=>{const span=btn.querySelector("span");const label=(span?span.textContent:btn.textContent).trim().toLowerCase();if(label==="plan"){if(span)span.textContent="Goals";else btn.textContent="Goals";}});
+  }
+  function weekGrid(){
+    return `<section class="coach-v161-week-card"><div class="v15-kicker">Goal-Based Week</div><h3>${esc(goal().label)} Schedule</h3><div class="coach-v161-week-grid">${schedule().map((name,i)=>`<div class="coach-v161-day ${i+1===dindex()?"active":""}"><b>${DAYS[i]}</b><span>${esc(name)}</span></div>`).join("")}</div></section>`;
+  }
+  function todayStable(){
+    ensure();shell();const host=document.getElementById("today");if(!host)return;const g=goal(), w=activeWorkout(), wt=latestWeight();
+    host.innerHTML=`<section class="v15-today-hero coach-v16-hero"><div class="v15-hero-bg"></div><div class="v15-hero-shade"></div><div class="v15-hero-content"><div><div class="coach-v16-badge">COACH · ${esc(g.label)}</div><div class="v15-meta-line">${dateLabel()} · Week ${state.week} · Day ${state.dayIndex} · ${esc(g.phase)}</div><h2 class="v15-hero-title">${esc(w.title)}</h2><div class="v15-hero-subtitle">${esc(w.structure)}</div></div><div class="v15-hero-bottom"><button class="v15-primary-action" onclick="coach161StartToday()">${w.type==="lift"?"Start Strength Log":"Start Guided Workout"}</button><button class="v15-round-action" onclick="window.openBriefingV110 ? window.openBriefingV110() : null">→</button></div></div></section><section class="coach-v16-goal-adjustment"><div class="coach-v16-badge">Goal-Aware Training</div><h3>${esc(g.label)} · ${esc(g.priority)}</h3><p class="v15-muted">${esc(g.note)}</p><div class="coach-v16-priority-row"><div><span>Today’s Bias</span><strong>${esc(g.priority)}</strong></div><div><span>Training Load</span><strong>${esc(g.load)}</strong></div></div></section><section class="coach-v16-weight-card"><div><div class="v15-kicker">Body Weight</div><div class="coach-v16-weight-number">${wt?`${Number(wt.weight).toFixed(1)} lb`:"Not logged"}</div><p class="v15-muted">${wt?`Last entry: ${esc(wt.date)}`:"Add today's weight to start a trend."}</p></div><button class="v15-round-action" onclick="coachV16OpenWeight()">+</button></section>${weekGrid()}<section class="v15-panel v15-coach-card"><div class="v15-kicker">Next Milestone</div><h3>${esc(w.success)}</h3><p class="v15-muted">${esc(w.purpose)}</p></section>`;
+  }
+  function goalsStable(){
+    ensure();shell();const host=document.getElementById("plan");if(!host)return;const g=goal();
+    host.innerHTML=`<section class="v15-screen-head"><div class="v15-kicker">Goals</div><h2>COACH Plan</h2><p class="v15-muted">Your selected goal controls the weekly structure and today’s mission.</p></section><section class="coach-v16-goal-hero"><div class="coach-v16-badge">Active Goal</div><h2>${esc(g.label)}</h2><p class="v15-muted">${esc(g.note)}</p><div class="v15-metric-grid" style="margin-top:14px"><div><span>Phase</span><strong>${esc(g.phase)}</strong></div><div><span>Progress</span><strong>${pct()}%</strong></div></div><div class="coach-v16-actions"><button class="v1531-button-primary" onclick="coachV16OpenGoalPicker()">Change Goal</button><button class="v1531-button-secondary" onclick="openSetPosition ? openSetPosition() : null">Set Week/Day</button></div></section>${weekGrid()}`;
+  }
+  function statsStable(){
+    ensure();shell();const host=document.getElementById("dashboard");if(!host)return;const g=goal(), wt=latestWeight();
+    host.innerHTML=`<section class="v15-screen-head"><div class="v15-kicker">Stats</div><h2>Progress</h2><p class="v15-muted">Training, strength, recovery, and body-weight trend.</p></section><section class="v15-panel"><div class="v15-kicker">COACH Overview</div><h3>${esc(g.label)}</h3><p class="v15-muted">${esc(g.note)}</p><div class="v15-metric-grid"><div><span>Priority</span><strong>${esc(g.priority)}</strong></div><div><span>Weight</span><strong>${wt?Number(wt.weight).toFixed(1):"—"}</strong></div><div><span>Program</span><strong>${pct()}%</strong></div><div><span>Completed</span><strong>${(state.completed||[]).length}</strong></div></div><div class="coach-v16-actions"><button class="v1531-button-primary" onclick="coachV16OpenWeight()">Add Weight</button><button class="v1531-button-secondary" onclick="coachV16OpenGoalPicker()">Change Goal</button></div></section><section class="v15-panel"><div class="v15-kicker">This Week</div><h3>Goal Structure</h3>${weekGrid()}</section>`;
+  }
+  if(!window.__coachOriginalStartWorkout1611 && typeof window.startWorkout==="function") window.__coachOriginalStartWorkout1611=window.startWorkout;
+  window.coach161StartToday=function(){const w=activeWorkout();if(w.type==="lift"){if(typeof window.ruut155StartLift==="function"){window.ruut155StartLift(w.templateId||"fullBody");return;}showScreen("strength");return;}return window.__coachOriginalStartWorkout1611();};
+  const oldShow=window.showScreen;
+  window.showScreen=showScreen=function(id,btn){shell();document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));const screen=document.getElementById(id);if(screen)screen.classList.add("active");document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));const navBtn=btn||document.querySelector(`nav button[data-target="${id}"]`);if(navBtn)navBtn.classList.add("active");if(id==="today")return todayStable();if(id==="plan")return goalsStable();if(id==="dashboard")return statsStable();if(typeof oldShow==="function")return oldShow(id,btn);};
+  window.renderToday=renderToday=todayStable;window.renderPlan=renderPlan=goalsStable;window.renderDashboard=renderDashboard=statsStable;
+  const oldRenderAll=window.renderAll;
+  window.renderAll=renderAll=function(){shell();todayStable();goalsStable();statsStable();try{if(typeof renderWorkout==="function")renderWorkout();}catch(e){}try{if(typeof renderRecover==="function")renderRecover();}catch(e){}try{if(typeof renderStrength==="function")renderStrength();}catch(e){}};
+  shell();const active=document.querySelector(".screen.active")?.id||"today";if(active==="today")todayStable();if(active==="plan")goalsStable();if(active==="dashboard")statsStable();
+})();
