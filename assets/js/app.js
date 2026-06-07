@@ -8332,3 +8332,197 @@ renderAll();
   setTimeout(()=>{renderToday1601();renderPlan1601();renderDashboard1601();},50);
   setTimeout(()=>{renderToday1601();renderPlan1601();renderDashboard1601();},500);
 })();
+
+
+// ---------- COACH V16.1 GOAL-BASED PROGRAM ENGINE ----------
+(function(){
+  const BASE_WORKOUT = window.__coachBaseCurrentWorkout1601 || currentWorkout;
+  const DAY_NAMES = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+
+  function esc(v){return String(v ?? "").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
+  function clone(v){try{return structuredClone(v);}catch(e){return JSON.parse(JSON.stringify(v));}}
+  function ensure(){state.coachV16=state.coachV16||{};state.coachV16.goal=state.coachV16.goal||"hybrid";}
+  function goalId(){ensure();return state.coachV16.goal||"hybrid";}
+  function dayIndex(){return Math.max(1,Math.min(7,Number(state.dayIndex||1)));}
+  function base(){return clone(BASE_WORKOUT());}
+
+  const FALLBACK_TEMPLATES = {
+    upperA:{id:"upperA",name:"Upper A",focus:"Chest Emphasis",exercises:[
+      ["Barbell Bench Press",4,"6-8"],["Incline Dumbbell Press",3,"8-10"],["Pull-Ups or Lat Pulldown",4,"8-12"],["Seated Cable Row",3,"10"],["Dumbbell Shoulder Press",3,"8-10"],["Dumbbell Lateral Raises",3,"12-15"],["Rope Tricep Pushdowns",3,"12"],["EZ-Bar Curls",3,"10-12"]
+    ]},
+    lowerCore:{id:"lowerCore",name:"Lower + Core",focus:"Legs and Trunk",exercises:[
+      ["Barbell Squats",4,"6-8"],["Romanian Deadlifts",3,"8-10"],["Walking Lunges",3,"10 each leg"],["Leg Curl",3,"12"],["Standing Calf Raises",4,"15"],["Hanging Knee Raises",3,"15"],["Cable Crunches",3,"15"],["Plank",3,"60 sec"]
+    ]},
+    upperB:{id:"upperB",name:"Upper B",focus:"Shoulders and Arms",exercises:[
+      ["Incline Barbell Bench",4,"6-8"],["Weighted Dips or Chest Machine Press",3,"8-12"],["Chest-Supported Row",4,"8-10"],["Pull-Ups or Lat Pulldown",3,"10"],["Dumbbell Lateral Raises",4,"15"],["Rear Delt Flyes",3,"15"],["Barbell Curls",4,"10"],["Hammer Curls",3,"12"],["Skull Crushers",4,"10"]
+    ]},
+    fullBody:{id:"fullBody",name:"Full Body",focus:"General Strength",exercises:[
+      ["Goblet Squat",3,"10-12"],["Dumbbell Bench Press",3,"8-10"],["Lat Pulldown",3,"10-12"],["Romanian Deadlift",3,"8-10"],["Dumbbell Shoulder Press",3,"8-10"],["Farmer Carry",3,"40 yards"]
+    ]}
+  };
+
+  function getTemplate(id){
+    const fromState = (state.strengthTemplates||[]).find(t=>t.id===id);
+    return fromState || FALLBACK_TEMPLATES[id] || FALLBACK_TEMPLATES.fullBody;
+  }
+
+  function lift(id, purpose){
+    const t=getTemplate(id);
+    const exercises=(t.exercises||[]).map(e=>{
+      if(Array.isArray(e)) return {mode:"reps",name:e[0],sets:e[1],reps:e[2],seconds:0};
+      return {mode:String(e.reps||"").includes("sec")?"timed":"reps",name:e.name,sets:e.sets||3,reps:e.reps||"8-10",seconds:String(e.reps||"").includes("sec")?parseInt(e.reps)||45:0,instruction:e.instruction||""};
+    });
+    return {
+      type:"lift",
+      title:t.name,
+      day:DAY_NAMES[dayIndex()-1],
+      time:"Gym strength",
+      structure:`${t.name}: ${t.focus || "Strength"}`,
+      distance:"Strength log",
+      templateId:t.id,
+      strengthTemplateId:t.id,
+      exercises,
+      purpose:purpose || "Build strength with progressive overload.",
+      effort:"Controlled. Log weight and reps honestly.",
+      success:"Complete the planned sets and save the session.",
+      caution:"Use safe loading, clean form, and stop sharp pain."
+    };
+  }
+
+  function run(title,total,structure,purpose,effort="Easy to moderate"){
+    return {
+      type:"run", day:DAY_NAMES[dayIndex()-1], title, time:`${total} min`, total,
+      runSeconds:180, walkSeconds:60, structure, distance:"Time-based",
+      purpose, terrain:"Flat route, treadmill, or controlled outdoor path.",
+      effort, success:"Finish controlled and able to recover.", caution:"Pain means stop. Fatigue is information."
+    };
+  }
+
+  function recovery(title="Recovery / Mobility", purpose="Recover so training can continue."){
+    return {type:"rest", day:DAY_NAMES[dayIndex()-1], title, time:"Recovery", total:20, runSeconds:0, walkSeconds:60, structure:"Mobility, stretching, walking, or full rest.", distance:"No target", purpose, effort:"Very easy.", success:"Finish feeling better.", caution:"Do not turn recovery into training."};
+  }
+
+  const GOAL_WEEKLY = {
+    muscle:["upperA","supportCardio","lowerCore","recovery","upperB","conditioning","recovery"],
+    hybrid:["upperA","easyRun","lowerCore","intervals","upperB","longRun","recovery"],
+    fatloss:["fullBody","zone2","lowerCore","conditioning","upperB","longCardio","recovery"],
+    endurance:["easyRun","runnerStrength","intervals","recovery","steadyRun","longRun","recovery"],
+    general:["fullBody","easyCardio","mobilityCore","fullBody","easyRun","outdoor","recovery"],
+    maintain:["fullBody","easyCardio","recovery","fullBody","easyRun","optional","recovery"]
+  };
+
+  function dayCode(){
+    const arr=GOAL_WEEKLY[goalId()] || GOAL_WEEKLY.hybrid;
+    return arr[dayIndex()-1] || "recovery";
+  }
+
+  function workoutFromCode(code){
+    switch(code){
+      case "upperA": return lift("upperA","Upper-body strength and progressive overload.");
+      case "lowerCore": return lift("lowerCore","Lower-body strength, core control, and durability.");
+      case "upperB": return lift("upperB","Shoulders, arms, upper-body volume, and balanced pulling.");
+      case "fullBody": return lift("fullBody","Full-body strength and movement quality.");
+      case "runnerStrength": {
+        const w=base();
+        w.type="bodyweight"; w.title="Runner Strength"; w.time="Support strength"; w.structure="Controlled bodyweight work for hips, trunk, legs, and posture."; w.purpose="Build durability for running without excessive soreness."; w.effort="Controlled"; 
+        return w;
+      }
+      case "supportCardio": return run("Support Cardio",25,"Zone 2 cardio. Easy pace. No racing.","Support heart health and recovery without interfering with muscle growth.","Easy");
+      case "easyRun": return run("Easy Run",30,"Conversational run/walk effort.","Build aerobic base and consistency.","Easy");
+      case "zone2": return run("Zone 2 Cardio",40,"Steady conversational cardio.","Support fat loss, endurance, and recovery.","Easy to moderate");
+      case "conditioning": return run("Conditioning",30,"Short controlled intervals or brisk incline walking.","Raise conditioning without wrecking recovery.","Moderate");
+      case "longCardio": return run("Long Easy Cardio",55,"Comfortable longer effort. Walk/run allowed.","Increase calorie output and endurance sustainably.","Easy");
+      case "intervals": return run("Intervals / Hills",32,"Controlled hard segments with full recovery. No sprinting.","Build speed, strength, and aerobic capacity.","Moderate to strong");
+      case "steadyRun": return run("Steady Run",38,"Sustained controlled effort.","Build stamina and pacing discipline.","Comfortably steady");
+      case "longRun": return run("Long Run",60,"Patient long easy run/walk.","Build endurance and mental control.","Easy and patient");
+      case "easyCardio": return run("Easy Cardio",25,"Walk, bike, easy jog, or treadmill.","Support general health and consistency.","Easy");
+      case "outdoor": return run("Outdoor Session",40,"Walk, hike, easy run, or mixed movement.","Build general capacity outdoors.","Easy to moderate");
+      case "mobilityCore": {
+        const w=base();
+        w.type="bodyweight"; w.title="Mobility + Core"; w.time="20-25 min"; w.structure="Core, mobility, and light movement."; w.purpose="Improve movement quality and trunk control."; w.effort="Easy to moderate";
+        return w;
+      }
+      case "optional": return recovery("Optional Activity","Walk, stretch, hike easy, or rest. Preserve fitness without forcing load.");
+      default: return recovery();
+    }
+  }
+
+  function goalWorkout(){
+    const w=workoutFromCode(dayCode());
+    w.goalScheduleCode=dayCode();
+    w.goalName=(state.coachV16?.goal || "hybrid");
+    return w;
+  }
+
+  currentWorkout = goalWorkout;
+  window.currentWorkout = currentWorkout;
+
+  function weeklySummary(){
+    const arr=GOAL_WEEKLY[goalId()]||GOAL_WEEKLY.hybrid;
+    return arr.map((code,i)=>({day:DAY_NAMES[i],code,title:workoutFromCode(code).title}));
+  }
+
+  const prevStart = window.startWorkout || startWorkout;
+  startWorkout = function(){
+    const x=currentWorkout();
+    if(x.type==="lift"){
+      if(typeof window.ruut155StartLift === "function"){
+        window.ruut155StartLift(x.strengthTemplateId || x.templateId || "fullBody");
+        return;
+      }
+      alert("Strength logging is not available yet. Open the Strength tab and start this workout there.");
+      return;
+    }
+    return prevStart();
+  };
+  window.startWorkout = startWorkout;
+
+  const priorRenderToday = window.renderToday;
+  renderToday = function(){
+    if(typeof priorRenderToday === "function") priorRenderToday();
+    const today=document.getElementById("today"); if(!today) return;
+    const x=currentWorkout();
+    const startBtn=today.querySelector(".v15-primary-action");
+    if(startBtn && x.type==="lift") startBtn.textContent="Start Strength Log";
+    document.getElementById("coachV161Week")?.remove();
+    const week=weeklySummary();
+    today.insertAdjacentHTML("beforeend",`<section id="coachV161Week" class="coach-v161-week-card">
+      <div class="v15-kicker">Goal-Based Week</div>
+      <h3>${esc((state.coachV16?.goal||"hybrid").replace(/^\w/,c=>c.toUpperCase()))} Schedule</h3>
+      <div class="coach-v161-week-grid">${week.map((d,i)=>`<div class="coach-v161-day ${i+1===dayIndex()?"active":""}"><b>${d.day}</b><span>${esc(d.title)}</span></div>`).join("")}</div>
+    </section>`);
+  };
+  window.renderToday = renderToday;
+
+  const priorRenderPlan = window.renderPlan;
+  renderPlan = function(){
+    if(typeof priorRenderPlan === "function") priorRenderPlan();
+    const host=document.getElementById("plan"); if(!host) return;
+    document.getElementById("coachV161PlanWeek")?.remove();
+    const week=weeklySummary();
+    host.insertAdjacentHTML("beforeend",`<section id="coachV161PlanWeek" class="coach-v161-week-card">
+      <div class="v15-kicker">Weekly Training Structure</div>
+      <h3>Goal-Specific Schedule</h3>
+      <p class="v15-muted">The selected goal now controls what kind of workout appears each day.</p>
+      <div class="coach-v161-week-grid">${week.map((d,i)=>`<div class="coach-v161-day ${i+1===dayIndex()?"active":""}"><b>${d.day}</b><span>${esc(d.title)}</span></div>`).join("")}</div>
+    </section>`);
+  };
+  window.renderPlan = renderPlan;
+
+  const oldShow = window.showScreen;
+  showScreen = function(id,btn){
+    if(typeof oldShow==="function") oldShow(id,btn);
+    if(id==="today") setTimeout(renderToday,20);
+    if(id==="plan") setTimeout(renderPlan,20);
+  };
+  window.showScreen = showScreen;
+
+  const oldRenderAll = window.renderAll;
+  renderAll = function(){
+    if(typeof oldRenderAll==="function") oldRenderAll();
+    setTimeout(()=>{renderToday();renderPlan();},20);
+  };
+  window.renderAll=renderAll;
+
+  setTimeout(()=>{try{renderToday();renderPlan();}catch(e){console.warn("COACH v16.1 render failed",e);}},300);
+})();

@@ -880,3 +880,58 @@ body.ruut-v15 nav button[data-target="strength"].active{color:var(--v15-lime)!im
 .coach-v16-priority-row strong{display:block;margin-top:4px;color:#f6f8fb}
 .coach-v16 nav button[data-target="plan"] span{color:#b6ff00!important}
 @media(max-width:420px){.coach-v16-priority-row{grid-template-columns:1fr}.coach-v16 .v15-today-hero.coach-v16-hero{min-height:380px!important}}
+
+
+/* ---------- COACH v16.1 GOAL PROGRAM ENGINE ---------- */
+.coach-v161-week-card{
+  border-radius:26px;
+  padding:16px;
+  border:1px solid rgba(255,255,255,.13);
+  background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.035));
+}
+.coach-v161-week-grid{
+  display:grid;
+  grid-template-columns:repeat(7, minmax(0,1fr));
+  gap:7px;
+  margin-top:12px;
+}
+.coach-v161-day{
+  min-height:78px;
+  border-radius:18px;
+  padding:9px 7px;
+  border:1px solid rgba(255,255,255,.1);
+  background:rgba(0,0,0,.22);
+}
+.coach-v161-day.active{
+  border-color:rgba(182,255,0,.72);
+  background:rgba(182,255,0,.14);
+}
+.coach-v161-day b{
+  display:block;
+  font-size:10px;
+  color:#b6ff00;
+  letter-spacing:.08em;
+}
+.coach-v161-day span{
+  display:block;
+  margin-top:6px;
+  font-size:10px;
+  line-height:1.15;
+  color:#e9eef6;
+  font-weight:800;
+}
+.coach-v161-lift-action{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:10px;
+  align-items:center;
+  margin-top:12px;
+  padding:14px;
+  border-radius:22px;
+  border:1px solid rgba(182,255,0,.24);
+  background:rgba(182,255,0,.09);
+}
+@media(max-width:520px){
+  .coach-v161-week-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .coach-v161-day{min-height:64px}
+}
