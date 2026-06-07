@@ -935,3 +935,9 @@ body.ruut-v15 nav button[data-target="strength"].active{color:var(--v15-lime)!im
   .coach-v161-week-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .coach-v161-day{min-height:64px}
 }
+
+
+/* ---------- COACH v16.1.1 STABLE RENDER FIX ---------- */
+.coach-v16 .screen:not(.active){display:none!important}
+.coach-v16 .screen.active{display:block!important}
+.coach-v161-stable-note{border-radius:22px;padding:14px;border:1px solid rgba(182,255,0,.22);background:linear-gradient(180deg,rgba(182,255,0,.095),rgba(255,255,255,.035))}
