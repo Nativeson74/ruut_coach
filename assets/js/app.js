@@ -8647,29 +8647,20 @@ renderAll();
     if(active === "plan") coachPlan();
     if(active === "dashboard") coachDashboard();
 
-    // A short defensive lock window catches old setTimeout render calls still pending from earlier layers.
-    let count = 0;
-    const id = setInterval(()=>{
-      count++;
-      R.renderToday = coachToday;
-      R.renderPlan = coachPlan;
-      R.renderDashboard = coachDashboard;
-      R.showScreen = coachShow;
-      R.renderAll = coachRenderAll;
-      window.renderToday = coachToday;
-      window.renderPlan = coachPlan;
-      window.renderDashboard = coachDashboard;
-      window.showScreen = coachShow;
-      window.renderAll = coachRenderAll;
+    // v16.1.3: render lock remains installed, but repeated repaint loop removed.
 
-      const current = document.querySelector(".screen.active")?.id || "today";
-      if(current === "today") coachToday();
-      if(current === "plan") coachPlan();
-      if(current === "dashboard") coachDashboard();
-
-      if(count >= 8) clearInterval(id);
-    }, 250);
   }
 
   lockWhenReady();
+})();
+
+
+// ---------- COACH V16.1.3 NO-REPAINT LOOP MARKER ----------
+(function(){
+  window.COACH_RENDER_VERSION = "16.1.3";
+  try{
+    document.body.classList.add("coach-v16");
+    document.querySelectorAll(".v15-wordmark").forEach(e=>e.textContent="COACH");
+    document.querySelectorAll(".v15-subbrand").forEach(e=>e.textContent="Train With Purpose.");
+  }catch(e){}
 })();
