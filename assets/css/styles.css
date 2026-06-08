@@ -992,3 +992,19 @@ body.ruut-v15 nav button[data-target="strength"].active{color:var(--v15-lime)!im
 .coach-v1631-no-flicker .screen.active{
   contain:layout paint;
 }
+
+
+/* ---------- COACH v16.4 RENDER STACK CLEANUP ---------- */
+body.coach-booting main,
+body.coach-booting header,
+body.coach-booting nav{
+  opacity:0!important;
+}
+body.coach-ready main,
+body.coach-ready header,
+body.coach-ready nav{
+  opacity:1!important;
+  transition:opacity .12s ease;
+}
+body.coach-v16 .screen:not(.active){display:none!important}
+body.coach-v16 .screen.active{display:block!important}

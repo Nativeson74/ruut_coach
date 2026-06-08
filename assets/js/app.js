@@ -311,7 +311,7 @@ function openJournalEntry(){const x=currentWorkout();showModal(`<h2>Reflection</
 function saveJournal(){const x=currentWorkout();state.journal=state.journal||[];state.journal.push({date:new Date().toLocaleDateString(),workout:`W${state.week} D${state.dayIndex} ${x.title}`,feel:document.getElementById("feel").value,note:document.getElementById("note").value});saveState();hideModal()}
 function openSettings(){populateVoices();let opts=voices.map(v=>`<option value="${v.voiceURI}" ${settings.voiceURI===v.voiceURI?"selected":""}>${v.name} ${v.lang}</option>`).join("");showModal(`<h2>Settings</h2><p class="muted" style="margin:8px 0 12px">Voice, route mode, adaptive coaching, and workout flow.</p><label class="small muted">Coach Style</label><select id="coachStyle"><option value="trail" ${settings.coachStyle==="trail"?"selected":""}>Trail Guide</option><option value="calm" ${settings.coachStyle==="calm"?"selected":""}>Calm Coach</option><option value="tough" ${settings.coachStyle==="tough"?"selected":""}>Tough Love</option></select><div style="height:10px"></div><label class="small muted">Voice</label><select id="voiceSelect"><option value="">System Default</option>${opts}</select><div style="height:10px"></div><label class="small muted">Voice Speed</label><select id="voiceRate"><option value=".85" ${settings.voiceRate==.85?"selected":""}>Slow</option><option value=".95" ${settings.voiceRate==.95?"selected":""}>Normal</option><option value="1.05" ${settings.voiceRate==1.05?"selected":""}>Brisk</option></select><div style="height:10px"></div><label class="small muted">Route Mode</label><select id="routeMode"><option value="outback" ${settings.routeMode==="outback"?"selected":""}>Out and Back: Halfway Cue</option><option value="loop" ${settings.routeMode==="loop"?"selected":""}>Loop: No Turnaround Cue</option><option value="treadmill" ${settings.routeMode==="treadmill"?"selected":""}>Treadmill</option><option value="trail" ${settings.routeMode==="trail"?"selected":""}>Trail</option></select><div style="height:10px"></div><label><input id="adaptive" type="checkbox" ${settings.adaptive?"checked":""}> Adaptive readiness check</label><br><label><input id="warmup" type="checkbox" ${settings.warmup?"checked":""}> Warmup coaching</label><br><label><input id="cooldown" type="checkbox" ${settings.cooldown?"checked":""}> Cooldown coaching</label><br><label><input id="keepAwake" type="checkbox" ${settings.keepAwake?"checked":""}> Try to keep screen awake</label><div style="height:12px"></div><button onclick="saveSettingsFromModal()">Save Settings</button><div style="height:8px"></div><button class="secondary" onclick="testVoice()">Test Voice</button><div style="height:8px"></div><button class="danger" onclick="confirmReset()">Reset Program</button><p class="muted small" style="margin-top:12px">For best reliability, set iPhone Auto-Lock to Never during workouts. A web app cannot guarantee true background coaching when the phone locks.</p>`) }
 function saveSettingsFromModal(){settings.coachStyle=document.getElementById("coachStyle").value;settings.voiceURI=document.getElementById("voiceSelect").value;settings.voiceRate=parseFloat(document.getElementById("voiceRate").value);settings.routeMode=document.getElementById("routeMode").value;settings.adaptive=document.getElementById("adaptive").checked;settings.warmup=document.getElementById("warmup").checked;settings.cooldown=document.getElementById("cooldown").checked;settings.keepAwake=document.getElementById("keepAwake").checked;saveSettings();speak("Settings saved. Ready when you are.")}
-function testVoice(){saveSettingsFromModal();speak("This is your RUUT coach. Smooth, steady, and built for the long run.")}
+function testVoice(){saveSettingsFromModal();speak("This is COACH. Train with purpose. Stay steady and do the work.")}
 function confirmReset(){showModal(`<h2>Reset Program?</h2><p class="muted" style="margin:12px 0 18px">This clears progress, journal entries, and returns you to Week 1, Day 1.</p><button class="danger" onclick="resetProgram()">Reset Everything</button><div style="height:8px"></div><button class="secondary" onclick="hideModal()">Cancel</button>`)}
 function resetProgram(){state=defaultState();saveState();hideModal()}
 function exportProgress(){showModal(`<h2>Progress Backup</h2><p class="muted small" style="margin:10px 0">Copy this if you want a backup.</p><textarea>${JSON.stringify(state,null,2)}</textarea><div style="height:8px"></div><button onclick="hideModal()">Done</button>`)}
@@ -4850,8 +4850,8 @@ function showScreen(id,btn){
 
   // If any old delayed card injection still fires, clean Today again after it.
   if(id === "today"){
-    setTimeout(renderToday, 250);
-    setTimeout(renderToday, 750);
+    /* v16.4 removed legacy delayed renderToday 250 */
+    /* v16.4 removed legacy delayed renderToday 750 */
   }
 }
 window.showScreen = showScreen;
@@ -5407,8 +5407,8 @@ window.openBriefingV110 = openBriefingV110;
     if(btn) btn.classList.add("active");
     R14.renderAll();
     if(id === "today"){
-      setTimeout(R14.renderToday, 250);
-      setTimeout(R14.renderToday, 750);
+      /* v16.4 removed legacy delayed R14.renderToday 250 */
+      /* v16.4 removed legacy delayed R14.renderToday 750 */
     }
   };
 
@@ -5465,12 +5465,7 @@ window.openBriefingV110 = openBriefingV110;
     }
   }, true);
 
-  setInterval(function(){
-    try{
-      const today = document.getElementById("today");
-      if(today && today.classList.contains("active")) R14.renderToday();
-    }catch(e){}
-  }, 1500);
+  /* v16.4 removed legacy 1500ms Today repaint interval */
 })();
 
 // ---------- V14.4 ROUTE MODE CUES + HALFWAY FIX ----------
@@ -6294,8 +6289,8 @@ window.openBriefingV110 = openBriefingV110;
     if(header){
       header.innerHTML = `
         <div class="v15-header-brand" onclick="showScreen('today')">
-          <div class="v15-wordmark">RUUT</div>
-          <div class="v15-subbrand">Train. Live. On Purpose.</div>
+          <div class="v15-wordmark">COACH</div>
+          <div class="v15-subbrand">Train With Purpose.</div>
         </div>
         <button class="v15-settings-button" onclick="openSettings()">⚙</button>`;
     }
@@ -9782,4 +9777,84 @@ renderAll();
   if(active==="plan")renderGoalsFinal();
   if(active==="dashboard")renderStatsFinal();
   window.COACH_RENDER_CLEAN_VERSION="16.3.1";
+})();
+
+
+// ---------- COACH V16.4 RENDER STACK CLEANUP ----------
+(function(){
+  /*
+    Purpose:
+    - Prevent old RUUT/v14/v15 renderers from visibly painting during startup.
+    - Lock the final COACH render functions as the only active Today / Goals / Stats renderers.
+    - Remove the boot cloak after final render completes.
+    This keeps current COACH behavior and avoids touching workout/recovery/strength engines.
+  */
+
+  function ready(){
+    document.body.classList.remove("coach-booting");
+    document.body.classList.add("coach-ready","coach-v16");
+  }
+
+  function brand(){
+    try{
+      document.title="COACH";
+      document.body.classList.add("coach-v16");
+      document.querySelectorAll(".v15-wordmark").forEach(e=>e.textContent="COACH");
+      document.querySelectorAll(".v15-subbrand").forEach(e=>e.textContent="Train With Purpose.");
+      document.querySelectorAll("header h1").forEach(e=>e.textContent="COACH");
+      document.querySelectorAll(".logo").forEach(e=>e.textContent="C");
+      document.querySelectorAll("nav button").forEach(btn=>{
+        const span=btn.querySelector("span");
+        const label=(span?span.textContent:btn.textContent).trim().toLowerCase();
+        if(label==="plan"){ if(span) span.textContent="Goals"; else btn.textContent="Goals"; }
+      });
+    }catch(e){}
+  }
+
+  function lockFinalRenderers(){
+    const finalToday = window.renderToday;
+    const finalPlan = window.renderPlan;
+    const finalDashboard = window.renderDashboard;
+    const finalShow = window.showScreen;
+    const finalAll = window.renderAll;
+
+    if(typeof finalToday !== "function" || typeof finalPlan !== "function" || typeof finalDashboard !== "function"){
+      setTimeout(lockFinalRenderers, 50);
+      return;
+    }
+
+    if(window.ruut14Final){
+      window.ruut14Final.renderToday = finalToday;
+      window.ruut14Final.renderPlan = finalPlan;
+      window.ruut14Final.renderDashboard = finalDashboard;
+      if(typeof finalShow === "function") window.ruut14Final.showScreen = finalShow;
+      if(typeof finalAll === "function") window.ruut14Final.renderAll = finalAll;
+    }
+
+    window.renderToday = finalToday;
+    window.renderPlan = finalPlan;
+    window.renderDashboard = finalDashboard;
+    if(typeof finalShow === "function") window.showScreen = finalShow;
+    if(typeof finalAll === "function") window.renderAll = finalAll;
+
+    brand();
+
+    const active = document.querySelector(".screen.active")?.id || "today";
+    try{
+      if(active === "today") finalToday();
+      if(active === "plan") finalPlan();
+      if(active === "dashboard") finalDashboard();
+    }catch(e){}
+
+    ready();
+  }
+
+  brand();
+
+  // Run once immediately and once after old startup timers would have fired.
+  lockFinalRenderers();
+  setTimeout(()=>{brand(); lockFinalRenderers(); ready();}, 120);
+  setTimeout(()=>{brand(); ready();}, 900);
+
+  window.COACH_RENDER_STACK_CLEANUP_VERSION = "16.4";
 })();
