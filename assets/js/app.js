@@ -8863,3 +8863,229 @@ renderAll();
     if(document.getElementById("strength")?.classList.contains("active")) renderStrength();
   }catch(e){}
 })();
+
+
+// ---------- COACH V16.1.5 UNIVERSAL AUDIO INTERRUPT + STRENGTH TEMPLATE RESTORE ----------
+(function(){
+  /*
+    Fixes:
+    1. Universal audio interruption. Any user navigation/skip/next/previous action cancels active speech first.
+    2. Restores native strength templates if a prior custom-template patch left only the 30-min Upper Body workout.
+    3. Keeps the 30-min Upper Body template as an additional custom/native option.
+  */
+
+  function coachCancelSpeech(){
+    try{
+      if("speechSynthesis" in window){
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.resume();
+      }
+    }catch(e){}
+  }
+
+  window.coachCancelSpeech = coachCancelSpeech;
+
+  // Wrap speech functions so new speech always interrupts old speech.
+  const priorSpeak151 = window.speak;
+  if(typeof priorSpeak151 === "function" && !priorSpeak151.__coachInterruptWrapped){
+    const wrappedSpeak = function(text){
+      coachCancelSpeech();
+      return priorSpeak151.apply(this, arguments);
+    };
+    wrappedSpeak.__coachInterruptWrapped = true;
+    window.speak = speak = wrappedSpeak;
+  }
+
+  if(window.ruut14Final && typeof window.ruut14Final.speak === "function" && !window.ruut14Final.speak.__coachInterruptWrapped){
+    const oldR14Speak = window.ruut14Final.speak;
+    const wrappedR14Speak = function(text){
+      coachCancelSpeech();
+      return oldR14Speak.apply(this, arguments);
+    };
+    wrappedR14Speak.__coachInterruptWrapped = true;
+    window.ruut14Final.speak = wrappedR14Speak;
+  }
+
+  const priorCue151 = window.cue;
+  if(typeof priorCue151 === "function" && !priorCue151.__coachInterruptWrapped){
+    const wrappedCue = function(){
+      coachCancelSpeech();
+      return priorCue151.apply(this, arguments);
+    };
+    wrappedCue.__coachInterruptWrapped = true;
+    window.cue = cue = wrappedCue;
+  }
+
+  if(window.ruut14Final && typeof window.ruut14Final.cue === "function" && !window.ruut14Final.cue.__coachInterruptWrapped){
+    const oldR14Cue = window.ruut14Final.cue;
+    const wrappedR14Cue = function(){
+      coachCancelSpeech();
+      return oldR14Cue.apply(this, arguments);
+    };
+    wrappedR14Cue.__coachInterruptWrapped = true;
+    window.ruut14Final.cue = wrappedR14Cue;
+  }
+
+  // Any user-driven action should stop current speech before moving to the next prompt.
+  function wrapCancelFirst(fnName){
+    const fn = window[fnName];
+    if(typeof fn !== "function" || fn.__coachCancelFirstWrapped) return;
+    const wrapped = function(){
+      coachCancelSpeech();
+      return fn.apply(this, arguments);
+    };
+    wrapped.__coachCancelFirstWrapped = true;
+    window[fnName] = wrapped;
+    try{ eval(fnName + " = window[fnName]"); }catch(e){}
+  }
+
+  [
+    "skipCurrent",
+    "togglePause",
+    "showScreen",
+    "hideModal",
+    "ruut155NextExercise",
+    "ruut155PrevExercise",
+    "ruut155CancelLift",
+    "ruut155FinishLift",
+    "ruut155StartLift",
+    "startWorkout"
+  ].forEach(wrapCancelFirst);
+
+  // Recovery functions have had different names across versions. Wrap any global function that looks like a recovery nav action.
+  Object.keys(window).forEach(k=>{
+    if(!/recover|recovery|mobility|stretch/i.test(k)) return;
+    if(!/(next|prev|previous|skip|start|finish|close|cancel|movement|step)/i.test(k)) return;
+    if(typeof window[k] === "function") wrapCancelFirst(k);
+  });
+
+  // Capture clicks on common Next/Previous/Skip/Done/Start buttons before their onclick handlers run.
+  if(!window.__coachAudioClickCapture151){
+    window.__coachAudioClickCapture151 = true;
+    document.addEventListener("click", function(e){
+      const target = e.target?.closest?.("button,[role='button']");
+      if(!target) return;
+      const text = String(target.textContent || target.getAttribute("aria-label") || "").trim();
+      const onclick = String(target.getAttribute("onclick") || "");
+      if(/next|previous|prev|skip|pause|done|close|cancel|start|finish|complete/i.test(text + " " + onclick)){
+        coachCancelSpeech();
+      }
+    }, true);
+  }
+
+  function ex(name, sets, reps, instruction, safety, weight){
+    return {name, sets, reps, instruction, safety, weight: weight || "", defaultWeight: weight || ""};
+  }
+
+  function nativeStrengthTemplates(){
+    return [
+      {id:"upperA", name:"Upper A", focus:"Chest Emphasis", schedule:"Monday", notes:"Heavy pressing, balanced pulling, shoulders, arms.", exercises:[
+        ex("Barbell Bench Press",4,"6-8","Keep shoulder blades pulled back, lower under control, press without bouncing.","Use a spotter or safety arms when lifting heavy."),
+        ex("Incline Dumbbell Press",3,"8-10","Press from a slight incline. Keep elbows controlled and avoid flaring hard.","Stop if shoulders feel sharp."),
+        ex("Pull-Ups or Lat Pulldown",4,"8-12","Pull elbows down toward the ribs. Keep the chest tall and avoid swinging.","Use a controlled full range of motion."),
+        ex("Seated Cable Row",3,"10","Pull to the lower ribs, pause briefly, and control the return.","Do not yank with the low back."),
+        ex("Dumbbell Shoulder Press",3,"8-10","Brace your core, press overhead smoothly, and avoid leaning back.","Use a neutral grip if shoulders prefer it."),
+        ex("Dumbbell Lateral Raises",3,"12-15","Raise to shoulder height with soft elbows. Lead with the elbows, not the hands.","Use light weight and strict control."),
+        ex("Rope Tricep Pushdowns",3,"12","Keep elbows pinned. Extend fully and control the return.","Avoid shoulder movement."),
+        ex("EZ-Bar Curls",3,"10-12","Keep elbows quiet, curl under control, and lower slowly.","Do not swing the weight.")
+      ]},
+      {id:"lowerCore", name:"Lower + Core", focus:"Legs and Trunk", schedule:"Wednesday", notes:"Lower-body strength, durability, and core control.", exercises:[
+        ex("Barbell Squats",4,"6-8","Brace, sit between the hips, keep knees tracking with toes, and drive up strong.","Use safety arms and stop if back or knees feel sharp."),
+        ex("Romanian Deadlifts",3,"8-10","Hinge at the hips, keep a neutral back, and feel hamstrings load.","The bar stays close. Do not round the low back."),
+        ex("Walking Lunges",3,"10 each leg","Step with control, keep torso tall, and push through the front foot.","Shorten stride if knees complain."),
+        ex("Leg Curl",3,"12","Curl smoothly, pause, and control the return.","Do not throw the weight."),
+        ex("Standing Calf Raises",4,"15","Rise fully, pause at the top, and lower under control.","Use full range."),
+        ex("Hanging Knee Raises",3,"15","Tilt pelvis slightly, lift knees under control, and avoid swinging.","Use captain chair if grip limits you."),
+        ex("Cable Crunches",3,"15","Curl ribs toward hips. Keep hips quiet and control the return.","Do not pull with arms."),
+        ex("Plank",3,"60 sec","Brace abs, squeeze glutes, keep ribs down and body straight.","Stop before form collapses."),
+        ex("Side Plank",3,"30 sec each side","Stack shoulders and hips. Keep body long and controlled.","Drop to knees if needed.")
+      ]},
+      {id:"upperB", name:"Upper B", focus:"Shoulders and Arms", schedule:"Friday", notes:"Upper-body volume with shoulders and arms emphasis.", exercises:[
+        ex("Incline Barbell Bench",4,"6-8","Press from a steady base, control the descent, and keep shoulders packed.","Use a spotter or safety arms."),
+        ex("Weighted Dips or Chest Machine Press",3,"8-12","Lean slightly forward for chest. Keep shoulders down and reps controlled.","Use machine press if dips bother shoulders."),
+        ex("Chest-Supported Row",4,"8-10","Keep chest on pad and pull elbows back without shrugging.","No momentum."),
+        ex("Pull-Ups or Lat Pulldown",3,"10","Pull elbows down and keep the rib cage controlled.","No swinging."),
+        ex("Dumbbell Lateral Raises",4,"15","Move smoothly to shoulder height. Control every rep.","Light and strict beats heavy and sloppy."),
+        ex("Rear Delt Flyes",3,"15","Reach wide and slightly back. Keep traps relaxed.","Do not jerk the weight."),
+        ex("Barbell Curls",4,"10","Keep elbows near the sides and lower slowly.","No hip drive."),
+        ex("Hammer Curls",3,"12","Keep wrists neutral and curl with control.","Avoid swinging."),
+        ex("Skull Crushers",4,"10","Keep upper arms steady and lower the weight under control.","Use EZ-bar or dumbbells if elbows prefer it.")
+      ]},
+      {id:"fullBody", name:"Full Body", focus:"General Strength", schedule:"Optional", notes:"Balanced session for weeks when you need one complete gym workout.", exercises:[
+        ex("Goblet Squat",3,"10-12","Hold the weight close, sit between the hips, and stand tall.","Keep back neutral."),
+        ex("Dumbbell Bench Press",3,"8-10","Shoulders packed, lower under control, and press smoothly.","Avoid shoulder pain."),
+        ex("Lat Pulldown",3,"10-12","Pull elbows down, chest tall, and control the return.","No swinging."),
+        ex("Romanian Deadlift",3,"8-10","Hinge with neutral spine and feel hamstrings load.","Do not round back."),
+        ex("Dumbbell Shoulder Press",3,"8-10","Brace and press overhead without leaning back.","Use controlled range."),
+        ex("Farmer Carry",3,"40 yards","Stand tall, ribs down, and walk with steady control.","Do not lean side to side.")
+      ]}
+    ];
+  }
+
+  function upperBody30Template(){
+    return {
+      id:"upperBody30ChestShoulders",
+      name:"30-min Upper Body",
+      focus:"Chest/Shoulders",
+      schedule:"Custom",
+      notes:"Dumbbell-focused upper-body session. Chest, shoulders, and arms.",
+      exercises:[
+        ex("Dumbbell Bench Press",3,"10","Lie flat on a bench with a dumbbell in each hand. Hold dumbbells at chest level with palms forward. Plant feet firmly. Press upward until arms are nearly straight. Lower under control until elbows are slightly below bench level. Key cues: shoulder blades pulled back and down, slight natural low-back arch, wrists over elbows, controlled lift and lower.","Do not bounce the weights. Avoid flaring elbows straight out; aim for 45 to 60 degrees. Use a spotter or lighter weight if unfamiliar. Stop for shoulder pain.",60),
+        ex("Dumbbell Chest Fly",3,"10","Lie on a flat bench holding dumbbells above your chest. Keep a slight elbow bend. Open your arms wide in an arc until you feel a chest stretch. Squeeze chest to bring dumbbells back together. Key cues: hug a tree, keep elbow bend constant, move slowly.","Use lighter weights than bench press. Do not lower excessively deep. Avoid turning it into a press. Reduce range of motion for shoulder issues.",40),
+        ex("Dumbbell Hammer Curl",3,"10","Stand tall holding dumbbells at your sides. Keep palms facing each other. Curl dumbbells toward shoulders. Lower slowly. Key cues: elbows pinned, stand tall, move only at the elbow joint.","Avoid swinging. Do not use your back for momentum. Control the lowering phase. Choose a strict-form weight.",40),
+        ex("Dumbbell Shoulder Press",3,"10","Sit with back support or stand with feet shoulder-width apart. Hold dumbbells at shoulder level. Press upward until arms are nearly straight overhead. Lower under control. Key cues: tight core, press slightly inward as dumbbells rise, neutral spine.","Avoid excessive lower-back arch. Keep movement controlled. Do not lock out forcefully. Reduce weight if shoulders hurt.",35),
+        ex("Front Raise Dumbbell",3,"10","Stand with dumbbells in front of your thighs. Keep a slight elbow bend. Raise forward to shoulder height. Lower slowly. Key cues: lift with shoulders, keep torso still, raise only to shoulder height.","Avoid swinging. Do not raise above shoulder level. Use moderate weight. Stop for pinching in front of shoulder.",15),
+        ex("Lateral Raise Dumbbell",3,"10","Stand holding dumbbells at your sides. Slightly bend elbows. Raise arms out to sides until shoulder height. Lower slowly. Key cues: lead with elbows, keep shoulders down, slight forward lean if comfortable.","Use lighter weights than expected. Avoid shrugging. Do not swing. Stop at shoulder height to reduce stress.",15)
+      ]
+    };
+  }
+
+  function restoreStrengthTemplates(){
+    state.strengthTemplates = Array.isArray(state.strengthTemplates) ? state.strengthTemplates : [];
+    const byId = {};
+    state.strengthTemplates.forEach(t => { if(t && t.id) byId[t.id] = t; });
+
+    nativeStrengthTemplates().forEach(native => {
+      if(!byId[native.id] || !Array.isArray(byId[native.id].exercises) || !byId[native.id].exercises.length){
+        byId[native.id] = native;
+      }
+    });
+
+    const upper = upperBody30Template();
+    if(!byId[upper.id]){
+      byId[upper.id] = upper;
+    }else{
+      byId[upper.id] = {...upper, ...byId[upper.id], exercises: Array.isArray(byId[upper.id].exercises) && byId[upper.id].exercises.length ? byId[upper.id].exercises : upper.exercises};
+    }
+
+    const order = ["upperA","lowerCore","upperB","fullBody","upperBody30ChestShoulders"];
+    const ordered = order.map(id => byId[id]).filter(Boolean);
+    const extras = Object.values(byId).filter(t => !order.includes(t.id));
+    state.strengthTemplates = [...ordered, ...extras];
+
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){}
+  }
+
+  restoreStrengthTemplates();
+
+  const oldRenderStrength151 = window.renderStrength;
+  window.renderStrength = renderStrength = function(){
+    restoreStrengthTemplates();
+    if(window.ruut14Final && typeof window.ruut14Final.renderStrength === "function"){
+      return window.ruut14Final.renderStrength();
+    }
+    if(typeof oldRenderStrength151 === "function") return oldRenderStrength151();
+  };
+
+  if(window.ruut14Final && typeof window.ruut14Final.renderStrength === "function"){
+    const oldR14RenderStrength151 = window.ruut14Final.renderStrength;
+    window.ruut14Final.renderStrength = function(){
+      restoreStrengthTemplates();
+      return oldR14RenderStrength151();
+    };
+  }
+
+  try{
+    if(document.getElementById("strength")?.classList.contains("active")) renderStrength();
+  }catch(e){}
+})();
