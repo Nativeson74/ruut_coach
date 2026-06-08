@@ -9089,3 +9089,318 @@ renderAll();
     if(document.getElementById("strength")?.classList.contains("active")) renderStrength();
   }catch(e){}
 })();
+
+
+// ---------- COACH V16.2 PERFORMANCE SYSTEM ----------
+(function(){
+  /*
+    Adds:
+    - Exercise Library
+    - Custom exercises and favorites
+    - Personal records and previous-workout comparison
+    - Suggested next weight/reps
+    - Strength volume tracking
+    - Muscle group tracking
+    - Goal intelligence from local data
+    - Progress notes
+    This is a functional feature layer, not a full architecture refactor.
+  */
+
+  function esc(v){return String(v ?? "").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
+  function todayISO(){const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10);}
+  function shortDate(){try{return new Date().toLocaleDateString();}catch(e){return todayISO();}}
+  function num(v){const n=Number(v);return Number.isFinite(n)?n:0;}
+
+  const COACH_NATIVE_LIBRARY_162 = [
+    ["Barbell Bench Press","Chest","Barbell","Keep shoulder blades pulled back, lower under control, press without bouncing.","Use safety arms or a spotter when heavy."],
+    ["Dumbbell Bench Press","Chest","Dumbbells","Lie flat, brace, press dumbbells from chest to nearly straight arms, then lower under control.","Stop for shoulder pain. Do not bounce."],
+    ["Incline Dumbbell Press","Chest","Dumbbells","Press from a slight incline. Keep elbows controlled and shoulders packed.","Avoid excessive elbow flare."],
+    ["Dumbbell Chest Fly","Chest","Dumbbells","Use a soft elbow bend and move in an arc like hugging a tree.","Use lighter weights and avoid excessive depth."],
+    ["Pull-Ups or Lat Pulldown","Back","Bodyweight/Cable","Pull elbows down toward ribs. Keep chest tall and control the return.","Avoid swinging or yanking."],
+    ["Seated Cable Row","Back","Cable","Pull to lower ribs, pause, and control the return.","Do not jerk with the low back."],
+    ["Chest-Supported Row","Back","Machine/Dumbbells","Keep chest on the pad and pull elbows back without shrugging.","No momentum."],
+    ["Barbell Squats","Legs","Barbell","Brace, sit between the hips, knees track with toes, and drive up strong.","Use safety arms and stop sharp pain."],
+    ["Romanian Deadlifts","Hamstrings","Barbell/Dumbbells","Hinge at hips, keep neutral back, and load hamstrings.","Do not round low back."],
+    ["Walking Lunges","Legs","Bodyweight/Dumbbells","Step with control, torso tall, push through front foot.","Shorten stride if knees complain."],
+    ["Dumbbell Shoulder Press","Shoulders","Dumbbells","Brace, press overhead smoothly, and avoid leaning back.","Reduce weight for shoulder discomfort."],
+    ["Front Raise Dumbbell","Shoulders","Dumbbells","Raise dumbbells forward to shoulder height with torso still.","Do not swing or raise above shoulder height."],
+    ["Dumbbell Lateral Raises","Shoulders","Dumbbells","Lead with elbows to shoulder height. Keep shoulders down.","Use lighter weight and strict control."],
+    ["Rear Delt Flyes","Rear Delts","Dumbbells/Machine","Reach wide and slightly back. Keep traps relaxed.","Avoid jerking."],
+    ["EZ-Bar Curls","Biceps","EZ-Bar","Keep elbows quiet, curl under control, and lower slowly.","Do not swing."],
+    ["Dumbbell Hammer Curl","Biceps","Dumbbells","Palms face each other. Curl toward shoulders and lower slowly.","Do not lean back or use momentum."],
+    ["Rope Tricep Pushdowns","Triceps","Cable","Keep elbows pinned and extend fully.","Avoid shoulder movement."],
+    ["Skull Crushers","Triceps","EZ-Bar/Dumbbells","Keep upper arms steady and lower under control.","Use elbow-friendly range."],
+    ["Plank","Core","Bodyweight","Brace abs, squeeze glutes, ribs down, body straight.","Stop before form collapses."],
+    ["Farmer Carry","Grip/Core","Dumbbells","Stand tall, ribs down, walk with steady control.","Do not lean side to side."]
+  ];
+
+  function ensure162(){
+    state.exerciseLibraryV162 = Array.isArray(state.exerciseLibraryV162) ? state.exerciseLibraryV162 : [];
+    state.exerciseFavoritesV162 = Array.isArray(state.exerciseFavoritesV162) ? state.exerciseFavoritesV162 : [];
+    state.progressNotesV162 = Array.isArray(state.progressNotesV162) ? state.progressNotesV162 : [];
+    state.liftSessions = Array.isArray(state.liftSessions) ? state.liftSessions : [];
+    state.weightLogV16 = Array.isArray(state.weightLogV16) ? state.weightLogV16 : [];
+    const names = new Set(state.exerciseLibraryV162.map(e=>String(e.name||"").toLowerCase()));
+    COACH_NATIVE_LIBRARY_162.forEach(row=>{
+      if(!names.has(row[0].toLowerCase())){
+        state.exerciseLibraryV162.push({name:row[0],muscle:row[1],equipment:row[2],instruction:row[3],safety:row[4],native:true});
+      }
+    });
+    try{localStorage.setItem(STORAGE_KEY, JSON.stringify(state));}catch(e){}
+  }
+
+  function allExercises162(){
+    ensure162();
+    const map = new Map();
+    state.exerciseLibraryV162.forEach(e=>{if(e?.name)map.set(e.name.toLowerCase(), e);});
+    (state.strengthTemplates||[]).forEach(t=>(t.exercises||[]).forEach(e=>{
+      if(e?.name && !map.has(e.name.toLowerCase())){
+        map.set(e.name.toLowerCase(), {name:e.name,muscle:muscleFor162(e.name),equipment:"Template",instruction:e.instruction||"Move with control and clean form.",safety:e.safety||"",native:false});
+      }
+    }));
+    return [...map.values()].sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  }
+
+  function muscleFor162(name){
+    const n=String(name||"").toLowerCase();
+    if(/bench|press|fly|dip|chest/.test(n) && !/shoulder/.test(n)) return "Chest";
+    if(/row|pulldown|pull-up|pullup|lat/.test(n)) return "Back";
+    if(/squat|lunge|leg|calf/.test(n)) return "Legs";
+    if(/deadlift|romanian|hamstring|curl/.test(n) && !/barbell curl|hammer|ez/.test(n)) return "Hamstrings";
+    if(/shoulder|lateral|front raise|rear delt/.test(n)) return "Shoulders";
+    if(/curl|bicep|hammer/.test(n)) return "Biceps";
+    if(/tricep|skull/.test(n)) return "Triceps";
+    if(/plank|crunch|knee raise|core/.test(n)) return "Core";
+    if(/carry|farmer/.test(n)) return "Grip/Core";
+    return "General";
+  }
+
+  function exerciseSets162(name){
+    const sets=[];
+    const key=String(name||"").toLowerCase();
+    (state.liftSessions||[]).forEach(s=>{
+      (s.exercises||[]).forEach(e=>{
+        if(String(e.name||"").toLowerCase()===key){
+          (e.sets||[]).forEach(set=>sets.push({...set, exercise:e.name, session:s, iso:s.iso||set.iso||""}));
+        }
+      });
+    });
+    return sets.sort((a,b)=>String(b.iso||"").localeCompare(String(a.iso||"")));
+  }
+
+  function bestSet162(name){
+    const sets=exerciseSets162(name);
+    if(!sets.length) return null;
+    return sets.slice().sort((a,b)=>(num(b.weight)*num(b.reps))-(num(a.weight)*num(a.reps)))[0];
+  }
+
+  function e1rm162(set){
+    if(!set) return 0;
+    return Math.round(num(set.weight)*(1+(num(set.reps)/30)));
+  }
+
+  function lastSessionExercise162(name){
+    const key=String(name||"").toLowerCase();
+    const rows=[];
+    (state.liftSessions||[]).forEach(s=>{
+      (s.exercises||[]).forEach(e=>{
+        if(String(e.name||"").toLowerCase()===key && (e.sets||[]).length) rows.push({session:s,exercise:e});
+      });
+    });
+    return rows.sort((a,b)=>String(b.session.iso||"").localeCompare(String(a.session.iso||"")))[0] || null;
+  }
+
+  function parseHighRep162(reps){
+    const m=String(reps||"").match(/(\d+)(?!.*\d)/);
+    return m ? Number(m[1]) : 10;
+  }
+
+  function suggestion162(name,targetReps){
+    const last=lastSessionExercise162(name);
+    if(!last) return "Log this exercise once to unlock a next-target suggestion.";
+    const sets=last.exercise.sets||[];
+    if(!sets.length) return "Log this exercise once to unlock a next-target suggestion.";
+    const best=sets.slice().sort((a,b)=>(num(b.weight)*num(b.reps))-(num(a.weight)*num(a.reps)))[0];
+    const high=parseHighRep162(targetReps);
+    if(num(best.reps)>=high) return `Next target: ${num(best.weight)+5} x ${Math.max(6, high-2)} or ${num(best.weight)} x ${num(best.reps)+1}.`;
+    return `Next target: ${num(best.weight)} x ${num(best.reps)+1}.`;
+  }
+
+  function strengthVolume162(){
+    let total=0;
+    const byMuscle={};
+    (state.liftSessions||[]).forEach(s=>{
+      (s.exercises||[]).forEach(e=>{
+        const muscle=muscleFor162(e.name);
+        (e.sets||[]).forEach(set=>{
+          const vol=num(set.weight)*num(set.reps);
+          total+=vol;
+          byMuscle[muscle]=(byMuscle[muscle]||0)+vol;
+        });
+      });
+    });
+    return {total,byMuscle};
+  }
+
+  function recentPRs162(limit=5){
+    const bestBy={};
+    allExercises162().forEach(e=>{
+      const best=bestSet162(e.name);
+      if(best) bestBy[e.name]={name:e.name,best,e1rm:e1rm162(best),volume:num(best.weight)*num(best.reps)};
+    });
+    return Object.values(bestBy).sort((a,b)=>b.e1rm-a.e1rm).slice(0,limit);
+  }
+
+  function goalIntelligence162(){
+    const debriefs=(state.workoutDebriefs||[]).slice(-6);
+    const hard=debriefs.filter(d=>/hard|max|heavy|sore/i.test(`${d.feel} ${d.issue} ${d.note}`)).length;
+    const pain=debriefs.filter(d=>/pain|sharp|injury/i.test(`${d.feel} ${d.issue} ${d.note}`)).length;
+    const lifts=(state.liftSessions||[]).slice(-4).length;
+    const completed=(state.completed||[]).slice(-7).length;
+    if(pain>0) return {status:"Reduce Load",line:"Recent pain flags exist. Prioritize recovery and avoid aggressive progression."};
+    if(hard>=3) return {status:"Hold",line:"Recent debriefs show stress. Hold progression until recovery catches up."};
+    if(lifts>=2 && completed>=3) return {status:"Proceed",line:"Training rhythm looks solid. Continue the selected goal schedule."};
+    if(completed<2) return {status:"Rebuild Rhythm",line:"Consistency is the priority. Complete the next planned session before adding load."};
+    return {status:"Build Data",line:"COACH is collecting enough training history to make stronger recommendations."};
+  }
+
+  window.coach162OpenExerciseDetail = function(name){
+    ensure162();
+    const ex=allExercises162().find(e=>String(e.name).toLowerCase()===String(name).toLowerCase());
+    if(!ex) return;
+    const best=bestSet162(ex.name);
+    const last=lastSessionExercise162(ex.name);
+    showModal(`<div class="v1531-modal-head"><div class="v15-kicker">Exercise Library</div><h2>${esc(ex.name)}</h2><p>${esc(ex.muscle||"General")} · ${esc(ex.equipment||"")}</p></div>
+      <section class="coach162-card"><div class="coach162-pr-badge">How To</div><p style="margin-top:8px">${esc(ex.instruction||"Move with control and clean form.")}</p></section>
+      <section class="coach162-card"><div class="coach162-pr-badge">Safety</div><p style="margin-top:8px">${esc(ex.safety||"Stop sharp pain and use strict form.")}</p></section>
+      <div class="coach162-grid">
+        <section class="coach162-card"><div class="coach162-pr-badge">Best Set</div><h3>${best?`${esc(best.weight)} x ${esc(best.reps)}`:"None yet"}</h3><p>${best?`Estimated 1RM: ${e1rm162(best)}`:"Log this exercise to start history."}</p></section>
+        <section class="coach162-card"><div class="coach162-pr-badge">Last Time</div><h3>${last?(last.exercise.sets||[]).map(s=>`${s.weight}x${s.reps}`).join(", "):"None yet"}</h3><p>${suggestion162(ex.name)}</p></section>
+      </div>
+      <div class="coach162-actions"><button class="v1531-button-primary" onclick="coach162ToggleFavorite('${esc(ex.name)}')">${(state.exerciseFavoritesV162||[]).includes(ex.name)?"Unfavorite":"Favorite"}</button><button class="v1531-button-secondary" onclick="hideModal();coach162OpenExerciseLibrary()">Back</button></div>`);
+  };
+
+  window.coach162ToggleFavorite = function(name){
+    ensure162();
+    const set=new Set(state.exerciseFavoritesV162||[]);
+    if(set.has(name)) set.delete(name); else set.add(name);
+    state.exerciseFavoritesV162=[...set];
+    try{localStorage.setItem(STORAGE_KEY, JSON.stringify(state));}catch(e){}
+    coach162OpenExerciseDetail(name);
+  };
+
+  window.coach162OpenExerciseLibrary = function(){
+    ensure162();
+    const fav=new Set(state.exerciseFavoritesV162||[]);
+    const rows=allExercises162();
+    showModal(`<div class="v1531-modal-head"><div class="v15-kicker">Exercise Library</div><h2>Movement Coach</h2><p>Instructions, cues, safety notes, personal records, and next targets.</p></div>
+      <div class="coach162-actions"><button class="v1531-button-primary" onclick="hideModal();coach162OpenCustomExercise()">Add Custom Exercise</button><button class="v1531-button-secondary" onclick="hideModal()">Close</button></div>
+      <div class="coach162-list">${rows.map(e=>`<div class="coach162-row" onclick="coach162OpenExerciseDetail('${esc(e.name)}')"><div><strong>${fav.has(e.name)?"★ ":""}${esc(e.name)}</strong><p>${esc(e.muscle||"General")} · ${esc(e.equipment||"")}</p></div><span>Open</span></div>`).join("")}</div>`);
+  };
+
+  window.coach162OpenCustomExercise = function(){
+    showModal(`<div class="v1531-modal-head"><div class="v15-kicker">Custom Exercise</div><h2>Add Movement</h2><p>Create an exercise for your library.</p></div>
+      <label class="small muted">Name</label><input class="coach162-input" id="coach162ExName" placeholder="Exercise name">
+      <div style="height:8px"></div><label class="small muted">Muscle Group</label><input class="coach162-input" id="coach162ExMuscle" placeholder="Chest, Back, Legs, Shoulders...">
+      <div style="height:8px"></div><label class="small muted">Equipment</label><input class="coach162-input" id="coach162ExEquip" placeholder="Dumbbells, Barbell, Cable...">
+      <div style="height:8px"></div><label class="small muted">Instructions</label><textarea class="coach162-input" id="coach162ExInstruction" rows="4" placeholder="How to perform the movement"></textarea>
+      <div style="height:8px"></div><label class="small muted">Safety Notes</label><textarea class="coach162-input" id="coach162ExSafety" rows="3" placeholder="Common mistakes or warnings"></textarea>
+      <div class="coach162-actions"><button class="v1531-button-primary" onclick="coach162SaveCustomExercise()">Save</button><button class="v1531-button-secondary" onclick="hideModal();coach162OpenExerciseLibrary()">Cancel</button></div>`);
+  };
+
+  window.coach162SaveCustomExercise = function(){
+    ensure162();
+    const name=document.getElementById("coach162ExName")?.value?.trim();
+    if(!name){alert("Enter an exercise name first.");return;}
+    const item={
+      name,
+      muscle:document.getElementById("coach162ExMuscle")?.value?.trim()||muscleFor162(name),
+      equipment:document.getElementById("coach162ExEquip")?.value?.trim()||"Custom",
+      instruction:document.getElementById("coach162ExInstruction")?.value?.trim()||"Move with control and clean form.",
+      safety:document.getElementById("coach162ExSafety")?.value?.trim()||"Stop sharp pain and use strict form.",
+      native:false,
+      custom:true
+    };
+    state.exerciseLibraryV162=(state.exerciseLibraryV162||[]).filter(e=>String(e.name).toLowerCase()!==name.toLowerCase());
+    state.exerciseLibraryV162.push(item);
+    try{localStorage.setItem(STORAGE_KEY, JSON.stringify(state));}catch(e){}
+    hideModal(); coach162OpenExerciseDetail(name);
+  };
+
+  window.coach162OpenProgressNote = function(){
+    showModal(`<div class="v1531-modal-head"><div class="v15-kicker">Progress Note</div><h2>Log a Note</h2><p>Use this for body composition, energy, soreness, mindset, or training observations.</p></div>
+      <textarea class="coach162-input" id="coach162ProgressNote" rows="5" placeholder="What changed? What did you notice?"></textarea>
+      <div class="coach162-actions"><button class="v1531-button-primary" onclick="coach162SaveProgressNote()">Save Note</button><button class="v1531-button-secondary" onclick="hideModal()">Cancel</button></div>`);
+  };
+
+  window.coach162SaveProgressNote = function(){
+    const note=document.getElementById("coach162ProgressNote")?.value?.trim();
+    if(!note){alert("Enter a note first.");return;}
+    state.progressNotesV162=state.progressNotesV162||[];
+    state.progressNotesV162.push({iso:new Date().toISOString(),date:shortDate(),note});
+    try{localStorage.setItem(STORAGE_KEY, JSON.stringify(state));}catch(e){}
+    hideModal();
+    try{renderDashboard();}catch(e){}
+  };
+
+  function performancePanel162(){
+    ensure162();
+    const vol=strengthVolume162();
+    const prs=recentPRs162(5);
+    const intel=goalIntelligence162();
+    const maxVol=Math.max(1,...Object.values(vol.byMuscle));
+    const notes=(state.progressNotesV162||[]).slice(-3).reverse();
+    return `<section id="coach162Performance" class="v15-panel">
+      <div class="v15-kicker">Performance System</div>
+      <h3>Strength + Goal Intelligence</h3>
+      <div class="coach162-grid">
+        <div class="coach162-card"><div class="coach162-pr-badge">Recommendation</div><h3>${esc(intel.status)}</h3><p>${esc(intel.line)}</p></div>
+        <div class="coach162-card"><div class="coach162-pr-badge">Strength Volume</div><h3>${Math.round(vol.total).toLocaleString()}</h3><p>Total logged weight x reps.</p></div>
+      </div>
+      <div class="coach162-actions">
+        <button class="v1531-button-primary" onclick="coach162OpenExerciseLibrary()">Exercise Library</button>
+        <button class="v1531-button-secondary" onclick="coach162OpenProgressNote()">Add Progress Note</button>
+      </div>
+      <div class="coach162-chiprow">${prs.length?prs.map(p=>`<span class="coach162-chip lime">${esc(p.name)} · ${esc(p.best.weight)}x${esc(p.best.reps)} · e1RM ${p.e1rm}</span>`).join(""):`<span class="coach162-chip">Log strength sets to unlock PRs.</span>`}</div>
+      <div class="coach162-bars">${Object.entries(vol.byMuscle).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([m,v])=>`<div class="coach162-bar"><span>${esc(m)}</span><div><span style="width:${Math.max(8,Math.round((v/maxVol)*100))}%"></span></div><b>${Math.round(v)}</b></div>`).join("") || `<p class="v15-muted">No muscle-group volume yet.</p>`}</div>
+      ${notes.length?`<div class="coach162-list">${notes.map(n=>`<div class="coach162-row"><div><strong>${esc(n.date)}</strong><p>${esc(n.note)}</p></div><span>Note</span></div>`).join("")}</div>`:""}
+    </section>`;
+  }
+
+  const prevDashboard162 = window.renderDashboard;
+  window.renderDashboard = renderDashboard = function(){
+    if(typeof prevDashboard162 === "function") prevDashboard162();
+    ensure162();
+    const host=document.getElementById("dashboard");
+    if(!host) return;
+    document.getElementById("coach162Performance")?.remove();
+    host.insertAdjacentHTML("afterbegin", performancePanel162());
+  };
+
+  const prevStrength162 = window.renderStrength;
+  window.renderStrength = renderStrength = function(){
+    ensure162();
+    if(typeof prevStrength162 === "function") prevStrength162();
+    const host=document.getElementById("strength");
+    if(!host || document.getElementById("coach162StrengthTools")) return;
+    if(!state.activeLiftSessionV155){
+      host.insertAdjacentHTML("afterbegin", `<section id="coach162StrengthTools" class="v15-panel">
+        <div class="v15-kicker">Strength v2</div>
+        <h3>Exercise Library + Records</h3>
+        <p class="v15-muted">Open movement instructions, view PRs, compare last workouts, and add custom exercises.</p>
+        <div class="coach162-actions"><button class="v1531-button-primary" onclick="coach162OpenExerciseLibrary()">Exercise Library</button><button class="v1531-button-secondary" onclick="showScreen('dashboard')">View Progress</button></div>
+      </section>`);
+    }
+  };
+
+  if(window.ruut14Final && typeof window.ruut14Final.renderStrength === "function"){
+    const old = window.ruut14Final.renderStrength;
+    window.ruut14Final.renderStrength = function(){
+      const result = old.apply(this, arguments);
+      try{ window.renderStrength(); }catch(e){}
+      return result;
+    };
+  }
+
+  ensure162();
+})();

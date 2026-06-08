@@ -941,3 +941,25 @@ body.ruut-v15 nav button[data-target="strength"].active{color:var(--v15-lime)!im
 .coach-v16 .screen:not(.active){display:none!important}
 .coach-v16 .screen.active{display:block!important}
 .coach-v161-stable-note{border-radius:22px;padding:14px;border:1px solid rgba(182,255,0,.22);background:linear-gradient(180deg,rgba(182,255,0,.095),rgba(255,255,255,.035))}
+
+
+/* ---------- COACH v16.2 PERFORMANCE SYSTEM ---------- */
+.coach162-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.coach162-card{border-radius:22px;padding:14px;border:1px solid rgba(255,255,255,.12);background:linear-gradient(180deg,rgba(255,255,255,.075),rgba(255,255,255,.035))}
+.coach162-card h3{margin:5px 0 6px!important;font-size:20px!important;letter-spacing:-.035em}
+.coach162-card p{margin:0;color:#aeb8c6;font-size:12px;line-height:1.35}
+.coach162-pr-badge{display:inline-flex;align-items:center;padding:5px 8px;border-radius:999px;background:rgba(182,255,0,.13);border:1px solid rgba(182,255,0,.28);color:#b6ff00;font-size:10px;text-transform:uppercase;letter-spacing:.08em;font-weight:950}
+.coach162-list{display:grid;gap:8px;margin-top:12px}
+.coach162-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:12px;border-radius:18px;background:rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.09)}
+.coach162-row strong{display:block;color:#f6f8fb}
+.coach162-row span,.coach162-row p{color:#aeb8c6;font-size:12px;margin:3px 0 0}
+.coach162-chiprow{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
+.coach162-chip{border-radius:999px;padding:6px 9px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.055);font-size:11px;font-weight:850;color:#dfe7f1}
+.coach162-chip.lime{border-color:rgba(182,255,0,.35);background:rgba(182,255,0,.1);color:#b6ff00}
+.coach162-input{width:100%;border-radius:16px;border:1px solid rgba(255,255,255,.14);background:#0b1017;color:#f6f8fb;padding:12px;font-weight:750}
+.coach162-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.coach162-bars{display:grid;gap:7px;margin-top:10px}
+.coach162-bar{display:grid;grid-template-columns:88px 1fr 54px;gap:8px;align-items:center;font-size:11px;color:#aeb8c6}
+.coach162-bar div{height:9px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}
+.coach162-bar div span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#b6ff00,rgba(182,255,0,.38))}
+@media(max-width:520px){.coach162-grid{grid-template-columns:1fr}.coach162-actions{grid-template-columns:1fr}.coach162-bar{grid-template-columns:74px 1fr 46px}}
