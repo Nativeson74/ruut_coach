@@ -7658,7 +7658,7 @@ renderAll();
         <p class="v15-muted" style="margin-top:12px">${esc(e.instruction || "Move with control and clean form.")}</p>
         ${e.safety ? `<p class="v15-muted small" style="margin-top:8px"><strong>Safety:</strong> ${esc(e.safety)}</p>` : ""}
         <div class="v155-set-form">
-          <label>Weight<input id="v155Weight" type="number" step="0.5" placeholder="185" value="${last?.[0]?.weight || ""}"></label>
+          <label>Weight<input id="v155Weight" type="number" step="0.5" placeholder="185" value="${last?.[0]?.weight || e.weight || e.defaultWeight || ""}"></label>
           <label>Reps<input id="v155Reps" type="number" step="1" placeholder="8"></label>
         </div>
         <div style="height:10px"></div>
@@ -8662,5 +8662,204 @@ renderAll();
     document.body.classList.add("coach-v16");
     document.querySelectorAll(".v15-wordmark").forEach(e=>e.textContent="COACH");
     document.querySelectorAll(".v15-subbrand").forEach(e=>e.textContent="Train With Purpose.");
+  }catch(e){}
+})();
+
+
+// ---------- COACH V16.1.4 ADD 30-MIN UPPER BODY TEMPLATE ----------
+(function(){
+  function ensureStrengthTemplateStore(){
+    state.strengthTemplates = Array.isArray(state.strengthTemplates) ? state.strengthTemplates : [];
+  }
+
+  function ex(name, sets, reps, weight, steps, cues, safety){
+    return {
+      name,
+      sets,
+      reps,
+      weight,
+      defaultWeight: weight,
+      instruction: [
+        steps.join(" "),
+        "Key form cues: " + cues.join(" "),
+      ].join(" "),
+      safety: safety.join(" ")
+    };
+  }
+
+  function upperBody30Template(){
+    return {
+      id: "upperBody30ChestShoulders",
+      name: "30-min Upper Body",
+      focus: "Chest/Shoulders",
+      schedule: "Custom",
+      notes: "Dumbbell-focused upper-body session. Chest, shoulders, and arms. Default weights are starting targets and can be changed during logging.",
+      exercises: [
+        ex(
+          "Dumbbell Bench Press", 3, "10", 60,
+          [
+            "Lie flat on a bench with a dumbbell in each hand.",
+            "Hold the dumbbells at chest level with palms facing forward.",
+            "Plant your feet firmly on the floor.",
+            "Press the dumbbells upward until your arms are nearly straight.",
+            "Lower under control until your elbows are slightly below bench level.",
+            "Repeat."
+          ],
+          [
+            "Keep your shoulder blades pulled back and down.",
+            "Maintain a slight natural arch in your lower back.",
+            "Wrists stay straight over elbows.",
+            "Control both the lifting and lowering phases."
+          ],
+          [
+            "Do not bounce the weights off your chest.",
+            "Avoid flaring elbows straight out to the sides. Aim for about a 45 to 60 degree angle from your torso.",
+            "Use a spotter or lighter weight if you are unfamiliar with the movement.",
+            "Stop if you feel shoulder pain rather than chest muscle fatigue."
+          ]
+        ),
+        ex(
+          "Dumbbell Chest Fly", 3, "10", 40,
+          [
+            "Lie on a flat bench holding dumbbells above your chest.",
+            "Slightly bend your elbows and maintain that bend throughout.",
+            "Open your arms wide in an arc until you feel a stretch across your chest.",
+            "Squeeze your chest to bring the dumbbells back together above your chest."
+          ],
+          [
+            "Think hug a tree rather than pressing.",
+            "Keep the elbow bend constant.",
+            "Move slowly and deliberately."
+          ],
+          [
+            "Use lighter weights than your bench press.",
+            "Do not lower excessively deep.",
+            "Avoid turning the movement into a press.",
+            "If you have shoulder issues, reduce range of motion."
+          ]
+        ),
+        ex(
+          "Dumbbell Hammer Curl", 3, "10", 40,
+          [
+            "Stand tall holding dumbbells at your sides.",
+            "Keep palms facing each other throughout the movement.",
+            "Curl the dumbbells toward your shoulders.",
+            "Lower slowly to the starting position."
+          ],
+          [
+            "Keep elbows pinned near your sides.",
+            "Stand tall without leaning backward.",
+            "Move only at the elbow joint."
+          ],
+          [
+            "Avoid swinging the weights.",
+            "Do not use your back to generate momentum.",
+            "Control the lowering phase to reduce elbow strain.",
+            "Select a weight that allows strict form."
+          ]
+        ),
+        ex(
+          "Dumbbell Shoulder Press", 3, "10", 35,
+          [
+            "Sit on a bench with back support or stand with feet shoulder-width apart.",
+            "Hold dumbbells at shoulder level.",
+            "Press upward until your arms are nearly straight overhead.",
+            "Lower under control back to shoulder level."
+          ],
+          [
+            "Keep your core tight.",
+            "Press slightly inward as the dumbbells rise.",
+            "Maintain a neutral spine."
+          ],
+          [
+            "Avoid excessive arching of the lower back.",
+            "Keep the movement controlled.",
+            "Do not lock out forcefully at the top.",
+            "Reduce weight if shoulder discomfort occurs."
+          ]
+        ),
+        ex(
+          "Front Raise Dumbbell", 3, "10", 15,
+          [
+            "Stand with dumbbells in front of your thighs.",
+            "Keep a slight bend in your elbows.",
+            "Raise the dumbbells forward until they reach shoulder height.",
+            "Lower slowly back to the start."
+          ],
+          [
+            "Lift with your shoulders, not momentum.",
+            "Keep your torso still.",
+            "Raise only to shoulder height."
+          ],
+          [
+            "Avoid swinging your body.",
+            "Do not raise the weight above shoulder level.",
+            "Use moderate weight; this exercise is harder than it appears.",
+            "Stop if you feel pinching in the front of the shoulder."
+          ]
+        ),
+        ex(
+          "Lateral Raise Dumbbell", 3, "10", 15,
+          [
+            "Stand holding dumbbells at your sides.",
+            "Slightly bend your elbows.",
+            "Raise your arms out to the sides until shoulder height.",
+            "Lower slowly under control."
+          ],
+          [
+            "Lead with your elbows, not your hands.",
+            "Keep shoulders down and away from your ears.",
+            "Maintain a slight forward lean if comfortable."
+          ],
+          [
+            "Use lighter weights than most people think they need.",
+            "Avoid shrugging your shoulders during the lift.",
+            "Do not swing the weights upward.",
+            "Stop at shoulder height to reduce shoulder stress."
+          ]
+        )
+      ]
+    };
+  }
+
+  function installUpperBody30(){
+    ensureStrengthTemplateStore();
+    const template = upperBody30Template();
+    const existing = state.strengthTemplates.findIndex(t => t.id === template.id);
+    if(existing === -1){
+      state.strengthTemplates.push(template);
+    }else{
+      // Keep user-edited session names/order only if they already modified it manually.
+      // Otherwise refresh the native template with the expanded instructions and default weights.
+      state.strengthTemplates[existing] = {
+        ...template,
+        ...state.strengthTemplates[existing],
+        exercises: state.strengthTemplates[existing].exercises?.length ? state.strengthTemplates[existing].exercises : template.exercises
+      };
+    }
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }catch(e){}
+  }
+
+  installUpperBody30();
+
+  const oldRenderStrength141 = window.renderStrength;
+  window.renderStrength = renderStrength = function(){
+    installUpperBody30();
+    if(typeof oldRenderStrength141 === "function") return oldRenderStrength141();
+    if(window.ruut14Final && typeof window.ruut14Final.renderStrength === "function") return window.ruut14Final.renderStrength();
+  };
+
+  if(window.ruut14Final && typeof window.ruut14Final.renderStrength === "function"){
+    const oldR14Strength141 = window.ruut14Final.renderStrength;
+    window.ruut14Final.renderStrength = function(){
+      installUpperBody30();
+      return oldR14Strength141();
+    };
+  }
+
+  try{
+    if(document.getElementById("strength")?.classList.contains("active")) renderStrength();
   }catch(e){}
 })();
