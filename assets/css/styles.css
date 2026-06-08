@@ -980,3 +980,15 @@ body.ruut-v15 nav button[data-target="strength"].active{color:var(--v15-lime)!im
 .coach163-meter{height:10px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:9px}
 .coach163-meter span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#b6ff00,rgba(182,255,0,.36))}
 @media(max-width:520px){.coach163-score-grid{grid-template-columns:1fr}}
+
+
+/* ---------- COACH v16.3.1 RENDER CLEANUP ---------- */
+.coach-clean-note{
+  display:none!important;
+}
+.coach-v1631-readiness-wrap{
+  margin-bottom:14px;
+}
+.coach-v1631-no-flicker .screen.active{
+  contain:layout paint;
+}
