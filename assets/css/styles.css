@@ -992,3 +992,19 @@ body.ruut-v15 nav button[data-target="strength"].active{color:var(--v15-lime)!im
 .coach-v1631-no-flicker .screen.active{
   contain:layout paint;
 }
+
+
+/* ---------- COACH v17 TRAINING CALENDAR + PERIODIZATION ---------- */
+.coach17-block-card{border-radius:28px;padding:18px;border:1px solid rgba(182,255,0,.24);background:radial-gradient(circle at 100% 0%,rgba(182,255,0,.14),transparent 38%),linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.035))}
+.coach17-block-card h3{margin:8px 0!important;font-size:28px!important;letter-spacing:-.055em!important}
+.coach17-phase-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}
+.coach17-phase{border-radius:18px;padding:11px 9px;border:1px solid rgba(255,255,255,.11);background:rgba(0,0,0,.22)}
+.coach17-phase.active{border-color:rgba(182,255,0,.68);background:rgba(182,255,0,.12)}
+.coach17-phase b{display:block;font-size:11px;color:#f6f8fb}
+.coach17-phase span{display:block;margin-top:4px;font-size:10px;color:#aeb8c6}
+.coach17-calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:7px;margin-top:12px}
+.coach17-day{min-height:78px;border-radius:18px;padding:9px 7px;border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.22)}
+.coach17-day.active{border-color:rgba(182,255,0,.72);background:rgba(182,255,0,.14)}
+.coach17-day b{display:block;font-size:10px;color:#b6ff00;letter-spacing:.08em}
+.coach17-day span{display:block;margin-top:6px;font-size:10px;line-height:1.15;color:#e9eef6;font-weight:800}
+@media(max-width:520px){.coach17-phase-grid{grid-template-columns:1fr 1fr}.coach17-calendar{grid-template-columns:1fr 1fr}}
