@@ -963,3 +963,20 @@ body.ruut-v15 nav button[data-target="strength"].active{color:var(--v15-lime)!im
 .coach162-bar div{height:9px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}
 .coach162-bar div span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#b6ff00,rgba(182,255,0,.38))}
 @media(max-width:520px){.coach162-grid{grid-template-columns:1fr}.coach162-actions{grid-template-columns:1fr}.coach162-bar{grid-template-columns:74px 1fr 46px}}
+
+
+/* ---------- COACH v16.3 READINESS + PROGRESSION ENGINE ---------- */
+.coach163-score-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}
+.coach163-score{border-radius:22px;padding:14px;border:1px solid rgba(255,255,255,.12);background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.035))}
+.coach163-score span{display:block;color:#aeb8c6;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.08em}
+.coach163-score strong{display:block;margin-top:6px;font-size:30px;line-height:1;color:#f6f8fb;letter-spacing:-.06em}
+.coach163-status{border-radius:28px;padding:18px;border:1px solid rgba(182,255,0,.25);background:radial-gradient(circle at 100% 0%,rgba(182,255,0,.16),transparent 38%),linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.035))}
+.coach163-status h3{font-size:30px!important;letter-spacing:-.055em!important;margin:8px 0!important}
+.coach163-pill{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid rgba(182,255,0,.32);background:rgba(182,255,0,.12);color:#b6ff00;font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.08em}
+.coach163-list{display:grid;gap:8px;margin-top:12px}
+.coach163-item{border-radius:18px;padding:12px;border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.22)}
+.coach163-item strong{display:block;color:#f6f8fb}
+.coach163-item p{margin:4px 0 0;color:#aeb8c6;font-size:12px;line-height:1.35}
+.coach163-meter{height:10px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:9px}
+.coach163-meter span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#b6ff00,rgba(182,255,0,.36))}
+@media(max-width:520px){.coach163-score-grid{grid-template-columns:1fr}}

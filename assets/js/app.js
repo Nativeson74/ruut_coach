@@ -9404,3 +9404,137 @@ renderAll();
 
   ensure162();
 })();
+
+
+// ---------- COACH V16.3 READINESS + PROGRESSION ENGINE ----------
+(function(){
+  function esc(v){return String(v ?? "").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
+  function n(v){const x=Number(v);return Number.isFinite(x)?x:0;}
+  function clamp(x,min=0,max=100){return Math.max(min,Math.min(max,x));}
+  function daysAgo(iso){try{return (Date.now()-new Date(iso).getTime())/86400000;}catch(e){return 999;}}
+  function recent(arr,days=14){return (arr||[]).filter(x=>daysAgo(x.iso||x.date||x.importedAt||new Date())<=days);}
+
+  function weightTrend163(){
+    const rows=(state.weightLogV16||[]).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+    if(rows.length<2) return {label:"No trend",delta:0,score:50,line:"Log daily weight to build a trend."};
+    const first=rows[0], last=rows[rows.length-1];
+    const delta=n(last.weight)-n(first.weight);
+    const goal=state.coachV16?.goal || "hybrid";
+    let score=70;
+    if(goal==="fatloss" && delta<0) score=85;
+    else if(goal==="muscle" && delta<-3) score=48;
+    else if(goal==="muscle" && delta>=0) score=78;
+    else if(Math.abs(delta)<=3) score=75;
+    return {label:`${delta>0?"+":""}${delta.toFixed(1)} lb`,delta,score,line:`Weight change since first entry: ${delta>0?"+":""}${delta.toFixed(1)} lb.`};
+  }
+
+  function debriefSignals163(){
+    const rows=recent(state.workoutDebriefs||[],14);
+    const text=rows.map(r=>`${r.feel||""} ${r.issue||""} ${r.note||""}`).join(" ").toLowerCase();
+    const pain=(text.match(/pain|sharp|injury|hurt|worse/g)||[]).length;
+    const hard=(text.match(/hard|max|heavy|sore|exhausted|tired|fatigue/g)||[]).length;
+    let score=80 - pain*22 - hard*8;
+    if(!rows.length) score=62;
+    return {rows,pain,hard,score:clamp(score),line:rows.length?`${rows.length} recent debriefs, ${pain} pain flags, ${hard} fatigue flags.`:"No recent debriefs. Save debriefs for better recommendations."};
+  }
+
+  function completionSignals163(){
+    const completed=state.completed||[];
+    const total=completed.length;
+    const recentCompleted=completed.slice(-7).length;
+    let score=50 + Math.min(35,recentCompleted*5);
+    if(total===0) score=45;
+    return {total,recentCompleted,score:clamp(score),line:`${recentCompleted} recent completion records available.`};
+  }
+
+  function recoverySignals163(){
+    const sessions=Array.isArray(state.recoverySessionLogV154)?state.recoverySessionLogV154:[];
+    const count=recent(sessions,14).length + n(state.recoverySessions||0);
+    let score=55 + Math.min(30,count*4);
+    return {count,score:clamp(score),line:count?`${count} recovery signals logged.`:"No recovery sessions logged yet."};
+  }
+
+  function strengthSignals163(){
+    const sessions=recent(state.liftSessions||[],21);
+    let totalSets=0, volume=0;
+    sessions.forEach(s=>(s.exercises||[]).forEach(e=>(e.sets||[]).forEach(set=>{totalSets++;volume+=n(set.weight)*n(set.reps);})));
+    let score=50 + Math.min(30,totalSets*1.5);
+    if(totalSets>45) score-=12;
+    return {sessions,totalSets,volume,score:clamp(score),line:`${sessions.length} recent lift sessions, ${totalSets} sets, ${Math.round(volume).toLocaleString()} volume.`};
+  }
+
+  function runLoadSignals163(){
+    const completed=state.completed||[];
+    const recentCount=completed.slice(-7).length;
+    let score=65;
+    if(recentCount>=6) score=55;
+    if(recentCount<=2) score=58;
+    return {recentCount,score,line:`${recentCount} recent training completions counted for load.`};
+  }
+
+  function coachReadiness163(){
+    const deb=debriefSignals163(), comp=completionSignals163(), rec=recoverySignals163(), str=strengthSignals163(), wt=weightTrend163(), load=runLoadSignals163();
+    const recoveryScore=clamp(Math.round((deb.score*0.45)+(rec.score*0.30)+(load.score*0.25)));
+    const loadScore=clamp(Math.round((str.score*0.45)+(comp.score*0.35)+(load.score*0.20)));
+    const progressScore=clamp(Math.round((comp.score*0.35)+(str.score*0.35)+(wt.score*0.30)));
+    let recommendation="Maintain", line="Stay on the current goal schedule and keep collecting data.";
+    if(deb.pain>0){recommendation="Recovery Day Recommended";line="Pain flags are present. Prioritize recovery and avoid increasing load.";}
+    else if(recoveryScore<55){recommendation="Reduce";line="Recovery signals are weak. Reduce intensity or volume today.";}
+    else if(loadScore>82 && deb.hard>=2){recommendation="Hold";line="Training load is high and fatigue is showing. Hold progression.";}
+    else if(progressScore>=76 && recoveryScore>=70){recommendation="Increase";line="Progress and recovery signals support a small controlled increase.";}
+    else if(comp.recentCompleted<2){recommendation="Rebuild Rhythm";line="Consistency is the priority. Complete the next planned workout before progressing.";}
+    const readiness=Math.round((recoveryScore*0.45)+(progressScore*0.30)+(100-Math.abs(loadScore-70))*0.25);
+    return {recommendation,line,readiness:clamp(readiness),recoveryScore,loadScore,progressScore,signals:[deb.line,comp.line,rec.line,str.line,wt.line,load.line]};
+  }
+
+  window.coach163OpenReadinessDetail=function(){
+    const r=coachReadiness163();
+    showModal(`<div class="v1531-modal-head"><div class="v15-kicker">Readiness Engine</div><h2>${esc(r.recommendation)}</h2><p>${esc(r.line)}</p></div>
+      <div class="coach163-score-grid">
+        <div class="coach163-score"><span>Readiness</span><strong>${r.readiness}</strong><div class="coach163-meter"><span style="width:${r.readiness}%"></span></div></div>
+        <div class="coach163-score"><span>Recovery</span><strong>${r.recoveryScore}</strong><div class="coach163-meter"><span style="width:${r.recoveryScore}%"></span></div></div>
+        <div class="coach163-score"><span>Progress</span><strong>${r.progressScore}</strong><div class="coach163-meter"><span style="width:${r.progressScore}%"></span></div></div>
+      </div>
+      <div class="coach163-list">${r.signals.map(s=>`<div class="coach163-item"><strong>Signal</strong><p>${esc(s)}</p></div>`).join("")}</div>
+      <div class="coach162-actions"><button class="v1531-button-primary" onclick="hideModal()">Done</button><button class="v1531-button-secondary" onclick="hideModal();coach162OpenProgressNote()">Add Note</button></div>`);
+  };
+
+  function readinessPanel163(){
+    const r=coachReadiness163();
+    return `<section id="coach163Readiness" class="coach163-status">
+      <span class="coach163-pill">COACH Readiness</span>
+      <h3>${esc(r.recommendation)}</h3>
+      <p class="v15-muted">${esc(r.line)}</p>
+      <div class="coach163-score-grid">
+        <div class="coach163-score"><span>Readiness</span><strong>${r.readiness}</strong><div class="coach163-meter"><span style="width:${r.readiness}%"></span></div></div>
+        <div class="coach163-score"><span>Recovery</span><strong>${r.recoveryScore}</strong><div class="coach163-meter"><span style="width:${r.recoveryScore}%"></span></div></div>
+        <div class="coach163-score"><span>Load</span><strong>${r.loadScore}</strong><div class="coach163-meter"><span style="width:${r.loadScore}%"></span></div></div>
+      </div>
+      <div class="coach162-actions"><button class="v1531-button-primary" onclick="coach163OpenReadinessDetail()">View Reasoning</button><button class="v1531-button-secondary" onclick="coach162OpenProgressNote()">Add Note</button></div>
+    </section>`;
+  }
+
+  const prevDashboard163=window.renderDashboard;
+  window.renderDashboard=renderDashboard=function(){
+    if(typeof prevDashboard163==="function") prevDashboard163();
+    const host=document.getElementById("dashboard"); if(!host) return;
+    document.getElementById("coach163Readiness")?.remove();
+    host.insertAdjacentHTML("afterbegin", readinessPanel163());
+  };
+
+  const prevToday163=window.renderToday;
+  window.renderToday=renderToday=function(){
+    if(typeof prevToday163==="function") prevToday163();
+    const host=document.getElementById("today"); if(!host) return;
+    document.getElementById("coach163TodayReadiness")?.remove();
+    host.insertAdjacentHTML("afterbegin", `<section id="coach163TodayReadiness">${readinessPanel163()}</section>`);
+  };
+
+  const prevRenderAll163=window.renderAll;
+  window.renderAll=renderAll=function(){
+    if(typeof prevRenderAll163==="function") prevRenderAll163();
+    try{renderToday();renderDashboard();}catch(e){}
+  };
+
+  window.COACH_READINESS_VERSION="16.3";
+})();
