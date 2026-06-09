@@ -10407,3 +10407,214 @@ renderAll();
 
   window.COACH_DAILY_INTELLIGENCE_VERSION="17.4";
 })();
+
+
+// ---------- COACH V17.4.1 DAILY INTELLIGENCE STABILITY FIX ----------
+(function(){
+  /*
+    Fixes:
+    - Stops "This Week" from appearing/flashing on Today and Stats by hiding it there.
+    - Makes Body Metrics and Trophy Cabinet visible on Stats.
+    - Adds a Daily Intelligence diagnostic panel.
+    - Adds modal access for Body Metrics, Trophy Cabinet, and Rollover/Missed Workouts.
+  */
+
+  function esc(v){return String(v ?? "").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
+  function n(v){const x=Number(v);return Number.isFinite(x)?x:0;}
+  function localISO(d=new Date()){const x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10);}
+  function parseISODate(s){const d=new Date(String(s)+"T12:00:00");return Number.isFinite(d.getTime())?d:new Date();}
+  function addDaysISO(s,days){const d=parseISODate(s);d.setDate(d.getDate()+days);return localISO(d);}
+  function save(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(state));}catch(e){}}
+  function ensure(){
+    state.dailyIntelligenceV173=state.dailyIntelligenceV173||{};
+    state.dailyIntelligenceV174=state.dailyIntelligenceV174||{};
+    state.dailyIntelligenceV174.version="17.4.1";
+    state.dailyIntelligenceV174.lastActiveDate=state.dailyIntelligenceV174.lastActiveDate||localISO();
+    state.dailyIntelligenceV174.missedWorkouts=Array.isArray(state.dailyIntelligenceV174.missedWorkouts)?state.dailyIntelligenceV174.missedWorkouts:[];
+    state.dailyIntelligenceV174.trophies=Array.isArray(state.dailyIntelligenceV174.trophies)?state.dailyIntelligenceV174.trophies:[];
+    state.dailyIntelligenceV174.goalWeight=state.dailyIntelligenceV174.goalWeight ?? null;
+    state.weightLogV16=Array.isArray(state.weightLogV16)?state.weightLogV16:[];
+    state.completed=Array.isArray(state.completed)?state.completed:[];
+    state.liftSessions=Array.isArray(state.liftSessions)?state.liftSessions:[];
+  }
+  function weights(){
+    ensure();
+    return (state.weightLogV16||[]).filter(x=>x && x.date && n(x.weight)>0).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  }
+  function avg(rows){return rows.length?rows.reduce((s,x)=>s+n(x.weight),0)/rows.length:null;}
+  function fw(v){return v===null||v===undefined||Number.isNaN(Number(v))?"—":Number(v).toFixed(1);}
+  function body(){
+    const rows=weights(), latest=rows[rows.length-1]||null, first=rows[0]||null;
+    const delta=latest&&first?n(latest.weight)-n(first.weight):null;
+    const best=rows.length?rows.reduce((b,x)=>n(x.weight)<n(b.weight)?x:b,rows[0]):null;
+    const goal=state.dailyIntelligenceV174?.goalWeight ?? null;
+    const toGoal=latest&&goal?n(latest.weight)-n(goal):null;
+    return {rows,latest,first,delta,best,goal,toGoal,avg7:avg(rows.slice(-7)),avg30:avg(rows.slice(-30))};
+  }
+  function weightStreak(){
+    const rows=weights();
+    if(!rows.length) return 0;
+    const dates=new Set(rows.map(x=>x.date));
+    let count=0, cursor=localISO();
+    while(dates.has(cursor)){count++;cursor=addDaysISO(cursor,-1);if(count>365)break;}
+    return count;
+  }
+  function missed(){ensure();return state.dailyIntelligenceV174.missedWorkouts||[];}
+  function workoutCount(){return (state.completed||[]).length;}
+  function strengthCount(){return (state.liftSessions||[]).length;}
+  function recoveryCount(){return n(state.recoverySessions||0)+(Array.isArray(state.recoverySessionLogV154)?state.recoverySessionLogV154.length:0);}
+  function prCount(){
+    const best={};
+    (state.liftSessions||[]).forEach(s=>(s.exercises||[]).forEach(e=>(e.sets||[]).forEach(set=>{
+      const name=String(e.name||"").toLowerCase();
+      const score=n(set.weight)*n(set.reps);
+      if(name && (!best[name] || score>best[name])) best[name]=score;
+    })));
+    return Object.keys(best).length;
+  }
+  function trophyDefs(){
+    return [
+      ["firstWorkout","🏁","First Workout","Complete your first workout.",workoutCount()>=1],
+      ["tenWorkouts","🔥","10 Workouts","Complete 10 workouts.",workoutCount()>=10],
+      ["fiftyWorkouts","🏅","50 Workouts","Complete 50 workouts.",workoutCount()>=50],
+      ["hundredWorkouts","🏆","100 Workouts","Complete 100 workouts.",workoutCount()>=100],
+      ["firstStrength","💪","First Strength Session","Save your first strength session.",strengthCount()>=1],
+      ["fiftyStrength","🦾","50 Strength Sessions","Save 50 strength sessions.",strengthCount()>=50],
+      ["firstPR","⭐","First PR","Log your first exercise PR.",prCount()>=1],
+      ["tenPRs","🌟","10 PRs","Build PR history across 10 exercises.",prCount()>=10],
+      ["firstRecovery","🧘","First Recovery","Complete your first recovery session.",recoveryCount()>=1],
+      ["twentyFiveRecovery","🛡️","25 Recovery Sessions","Complete 25 recovery sessions.",recoveryCount()>=25],
+      ["sevenWeighIns","⚖️","7-Day Weigh-In Streak","Log weight 7 consecutive days.",weightStreak()>=7],
+      ["thirtyWeighIns","📈","30-Day Weigh-In Streak","Log weight 30 consecutive days.",weightStreak()>=30]
+    ];
+  }
+  function updateTrophies(){
+    ensure();
+    const set=new Set(state.dailyIntelligenceV174.trophies||[]);
+    trophyDefs().forEach(t=>{if(t[4])set.add(t[0]);});
+    state.dailyIntelligenceV174.trophies=[...set];
+    save();
+  }
+  function removeWeekOutsideGoals(){
+    ["today","dashboard"].forEach(id=>{
+      const host=document.getElementById(id);
+      if(!host) return;
+      host.querySelectorAll(".coach-v161-week-card").forEach(el=>el.remove());
+      host.querySelectorAll(".coach17-calendar").forEach(cal=>{
+        const sec=cal.closest("section");
+        if(sec) sec.remove(); else cal.remove();
+      });
+    });
+  }
+
+  function metricsHTML(){
+    const m=body();
+    return `<section id="coach1741BodyMetrics" class="coach1741-feature-hub">
+      <span class="coach1741-badge">Body Metrics</span>
+      <h3>Weight Trend</h3>
+      <p class="v15-muted">RENPHO data can feed this by Apple Health → iOS Shortcut → COACH import/manual entry. Current panel uses COACH weight entries.</p>
+      <div class="coach1741-grid">
+        <div class="coach1741-tile"><span>Current Weight</span><strong>${fw(m.latest?.weight)} lb</strong></div>
+        <div class="coach1741-tile"><span>7-Day Average</span><strong>${fw(m.avg7)} lb</strong></div>
+        <div class="coach1741-tile"><span>30-Day Average</span><strong>${fw(m.avg30)} lb</strong></div>
+        <div class="coach1741-tile"><span>Trend</span><strong>${m.delta===null?"—":`${m.delta>0?"+":""}${m.delta.toFixed(1)} lb`}</strong></div>
+        <div class="coach1741-tile"><span>Goal Weight</span><strong>${m.goal?fw(m.goal)+" lb":"—"}</strong></div>
+        <div class="coach1741-tile"><span>To Goal</span><strong>${m.toGoal===null?"—":`${m.toGoal>0?"+":""}${m.toGoal.toFixed(1)} lb`}</strong></div>
+        <div class="coach1741-tile"><span>Best Block Weight</span><strong>${m.best?fw(m.best.weight)+" lb":"—"}</strong></div>
+        <div class="coach1741-tile"><span>Weigh-In Streak</span><strong>${weightStreak()}</strong></div>
+      </div>
+      <div class="coach1741-actions"><button class="v1531-button-primary" onclick="coachV16OpenWeight()">Add Weight</button><button class="v1531-button-secondary" onclick="coach1741SetGoalWeight()">Set Goal Weight</button></div>
+    </section>`;
+  }
+  function trophiesHTML(limit=999){
+    updateTrophies();
+    const unlocked=new Set(state.dailyIntelligenceV174.trophies||[]);
+    const defs=trophyDefs();
+    return `<section id="coach1741Trophies" class="coach1741-feature-hub">
+      <span class="coach1741-badge">Trophy Cabinet</span>
+      <h3>Awards</h3>
+      <p class="v15-muted">${unlocked.size} of ${defs.length} unlocked.</p>
+      <div class="coach1741-list">${defs.slice(0,limit).map(t=>{
+        const on=unlocked.has(t[0]);
+        return `<div class="coach1741-row ${on?"":"locked"}"><div class="coach1741-icon">${t[1]}</div><div><strong>${esc(t[2])}</strong><p>${esc(t[3])}</p></div><span class="coach1741-badge">${on?"Unlocked":"Locked"}</span></div>`;
+      }).join("")}</div>
+    </section>`;
+  }
+  function rolloverHTML(){
+    ensure();
+    const recent=missed().slice(-5).reverse();
+    return `<section id="coach1741Rollover" class="coach1741-feature-hub">
+      <span class="coach1741-badge">Daily Rollover</span>
+      <h3>Midnight Advance</h3>
+      <p class="v15-muted">Active date: ${esc(state.dailyIntelligenceV174.lastActiveDate)}. After midnight, COACH advances the program and records unfinished workouts as missed.</p>
+      <div class="coach1741-grid">
+        <div class="coach1741-tile"><span>Total Missed</span><strong>${missed().length}</strong></div>
+        <div class="coach1741-tile"><span>Current Program Day</span><strong>${Number(state.week||1)}.${Number(state.dayIndex||1)}</strong></div>
+      </div>
+      ${recent.length?`<div class="coach1741-list">${recent.map(m=>`<div class="coach1741-row"><div class="coach1741-icon">⏭️</div><div><strong>${esc(m.title||"Workout")}</strong><p>${esc(m.date)} · Week ${esc(m.week)} Day ${esc(m.dayIndex)}</p></div><span class="coach1741-badge">Missed</span></div>`).join("")}</div>`:""}
+    </section>`;
+  }
+  function diagnosticHTML(){
+    ensure();
+    return `<section id="coach1741Diagnostic" class="coach1741-feature-hub">
+      <span class="coach1741-badge">Daily Intelligence</span>
+      <h3>Feature Status</h3>
+      <div class="coach1741-grid">
+        <div class="coach1741-tile"><span>Version</span><strong>${esc(window.COACH_DAILY_INTELLIGENCE_VERSION||state.dailyIntelligenceV174.version||"—")}</strong></div>
+        <div class="coach1741-tile"><span>Trophies</span><strong>${(state.dailyIntelligenceV174.trophies||[]).length}</strong></div>
+        <div class="coach1741-tile"><span>Weight Entries</span><strong>${weights().length}</strong></div>
+        <div class="coach1741-tile"><span>Missed Workouts</span><strong>${missed().length}</strong></div>
+      </div>
+      <div class="coach1741-actions"><button class="v1531-button-primary" onclick="coach1741OpenTrophies()">Open Trophies</button><button class="v1531-button-secondary" onclick="coach1741OpenMetrics()">Open Metrics</button></div>
+    </section>`;
+  }
+
+  window.coach1741OpenTrophies=function(){
+    showModal(`<div class="v1531-modal-head"><div class="v15-kicker">Awards</div><h2>Trophy Cabinet</h2><p>Streaks, workouts, PRs, recovery, and consistency.</p></div>${trophiesHTML()}<div class="coach1741-actions"><button class="v1531-button-primary" onclick="hideModal()">Done</button><button class="v1531-button-secondary" onclick="hideModal();showScreen('dashboard')">Stats</button></div>`);
+  };
+  window.coach1741OpenMetrics=function(){
+    showModal(`<div class="v1531-modal-head"><div class="v15-kicker">Body Metrics</div><h2>Weight Dashboard</h2><p>Low-friction trend tracking. No calorie counting.</p></div>${metricsHTML()}<div class="coach1741-actions"><button class="v1531-button-primary" onclick="hideModal()">Done</button><button class="v1531-button-secondary" onclick="hideModal();showScreen('dashboard')">Stats</button></div>`);
+  };
+  window.coach1741SetGoalWeight=function(){
+    const m=body();
+    showModal(`<div class="v1531-modal-head"><div class="v15-kicker">Body Metrics</div><h2>Goal Weight</h2><p>Set a target weight for this training block.</p></div><input id="coach1741GoalWeight" class="coach1741-tile" type="number" step="0.1" value="${esc(m.goal||"")}" placeholder="175"><div class="coach1741-actions"><button class="v1531-button-primary" onclick="coach1741SaveGoalWeight()">Save</button><button class="v1531-button-secondary" onclick="hideModal()">Cancel</button></div>`);
+  };
+  window.coach1741SaveGoalWeight=function(){
+    ensure();
+    const val=n(document.getElementById("coach1741GoalWeight")?.value);
+    state.dailyIntelligenceV174.goalWeight=val||null;
+    save();
+    hideModal();
+    try{renderDashboard();}catch(e){}
+  };
+
+  const prevDashboard=window.renderDashboard;
+  window.renderDashboard=renderDashboard=function(){
+    if(typeof prevDashboard==="function") prevDashboard();
+    const host=document.getElementById("dashboard"); if(!host) return;
+    ["coach1741BodyMetrics","coach1741Trophies","coach1741Rollover","coach1741Diagnostic"].forEach(id=>document.getElementById(id)?.remove());
+    removeWeekOutsideGoals();
+    host.insertAdjacentHTML("afterbegin", diagnosticHTML());
+    host.insertAdjacentHTML("afterbegin", rolloverHTML());
+    host.insertAdjacentHTML("afterbegin", trophiesHTML(6));
+    host.insertAdjacentHTML("afterbegin", metricsHTML());
+  };
+
+  const prevToday=window.renderToday;
+  window.renderToday=renderToday=function(){
+    if(typeof prevToday==="function") prevToday();
+    removeWeekOutsideGoals();
+  };
+
+  const prevRenderAll=window.renderAll;
+  window.renderAll=renderAll=function(){
+    if(typeof prevRenderAll==="function") prevRenderAll();
+    removeWeekOutsideGoals();
+  };
+
+  ensure();
+  updateTrophies();
+  removeWeekOutsideGoals();
+
+  window.COACH_DAILY_INTELLIGENCE_VERSION="17.4.1";
+})();
