@@ -9866,3 +9866,21 @@ renderAll();
   if(window.ruut14Final){window.ruut14Final.renderToday=renderTodayV17;window.ruut14Final.renderPlan=renderGoalsV17;window.ruut14Final.renderDashboard=renderStatsV17;window.ruut14Final.renderAll=window.renderAll;window.ruut14Final.showScreen=window.showScreen}
   ensure17();shell();const active=document.querySelector(".screen.active")?.id||"today";if(active==="today")renderTodayV17();if(active==="plan")renderGoalsV17();if(active==="dashboard")renderStatsV17();window.COACH_TRAINING_CALENDAR_VERSION="17.0";
 })();
+
+
+// ---------- COACH v17.1 INTELLIGENCE PACK ----------
+(function(){
+  state.achievementsV171 = state.achievementsV171 || [];
+  state.metricsV171 = state.metricsV171 || {goalWeight:null};
+
+  window.COACH_INTELLIGENCE_PACK_VERSION = "17.1";
+
+  window.coach171Summary = function(){
+    return {
+      version:"17.1",
+      achievements:(state.achievementsV171||[]).length,
+      weightEntries:(state.weightLogV16||[]).length,
+      liftSessions:(state.liftSessions||[]).length
+    };
+  };
+})();
