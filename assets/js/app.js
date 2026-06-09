@@ -10975,3 +10975,212 @@ renderAll();
 
   window.COACH_PERFORMANCE_INTELLIGENCE_VERSION="17.5";
 })();
+
+
+// ---------- COACH V17.6 TRAINING INTELLIGENCE ----------
+(function(){
+  /*
+    Adds:
+    - Real strength progression recommendations by exercise
+    - Training block report
+    - RUUT readiness input/import panel
+    - Green / Yellow / Red readiness decision
+  */
+
+  function esc(v){return String(v ?? "").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
+  function n(v){const x=Number(v);return Number.isFinite(x)?x:0;}
+  function save(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(state));}catch(e){}}
+  function todayISO(){const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10);}
+  function ensure176(){
+    state.trainingIntelligenceV176=state.trainingIntelligenceV176||{};
+    state.trainingIntelligenceV176.version="17.6";
+    state.trainingIntelligenceV176.ruutReadiness=Array.isArray(state.trainingIntelligenceV176.ruutReadiness)?state.trainingIntelligenceV176.ruutReadiness:[];
+    state.trainingIntelligenceV176.blockReports=Array.isArray(state.trainingIntelligenceV176.blockReports)?state.trainingIntelligenceV176.blockReports:[];
+    state.liftSessions=Array.isArray(state.liftSessions)?state.liftSessions:[];
+    state.completed=Array.isArray(state.completed)?state.completed:[];
+    state.weightLogV16=Array.isArray(state.weightLogV16)?state.weightLogV16:[];
+  }
+
+  function allExerciseSets(){
+    const out=[];
+    (state.liftSessions||[]).forEach(session=>{
+      (session.exercises||[]).forEach(ex=>{
+        (ex.sets||[]).forEach(set=>{
+          out.push({name:ex.name,weight:n(set.weight),reps:n(set.reps),session,iso:session.iso||set.iso||""});
+        });
+      });
+    });
+    return out.filter(x=>x.name && x.weight && x.reps);
+  }
+
+  function exerciseHistory(name){
+    const key=String(name||"").toLowerCase();
+    return allExerciseSets().filter(x=>String(x.name).toLowerCase()===key).sort((a,b)=>String(b.iso).localeCompare(String(a.iso)));
+  }
+
+  function e1rm(set){return set?Math.round(n(set.weight)*(1+n(set.reps)/30)):0;}
+
+  function bestExerciseSet(name){
+    const hist=exerciseHistory(name);
+    if(!hist.length)return null;
+    return hist.slice().sort((a,b)=>e1rm(b)-e1rm(a))[0];
+  }
+
+  function lastExerciseSession(name){
+    const key=String(name||"").toLowerCase();
+    const sessions=[];
+    (state.liftSessions||[]).forEach(session=>{
+      const found=(session.exercises||[]).find(e=>String(e.name||"").toLowerCase()===key);
+      if(found && (found.sets||[]).length)sessions.push({session,exercise:found});
+    });
+    return sessions.sort((a,b)=>String(b.session.iso||"").localeCompare(String(a.session.iso||"")))[0]||null;
+  }
+
+  function targetHigh(reps){const m=String(reps||"").match(/\d+/g);return m&&m.length?Number(m[m.length-1]):10;}
+  function targetLow(reps){const m=String(reps||"").match(/\d+/g);return m&&m.length?Number(m[0]):8;}
+
+  function templateExercises(){
+    const title=(typeof todayTitle==="function")?todayTitle():"";
+    const id=title==="Upper A"?"upperA":title==="Lower + Core"?"lowerCore":title==="Upper B"?"upperB":title==="Full Body"?"fullBody":"";
+    const t=Array.isArray(state.strengthTemplates)?state.strengthTemplates.find(x=>x.id===id):null;
+    if(t?.exercises?.length)return t.exercises.map(x=>({...x,template:t.name||title}));
+    return Array.isArray(state.strengthTemplates)?state.strengthTemplates.flatMap(t=>(t.exercises||[]).map(x=>({...x,template:t.name||t.id}))).slice(0,12):[];
+  }
+
+  function progressionFor(ex){
+    const last=lastExerciseSession(ex.name);
+    const best=bestExerciseSet(ex.name);
+    const low=targetLow(ex.reps);
+    const high=targetHigh(ex.reps);
+    if(!last){
+      return {status:"Baseline",next:ex.weight?`Start at ${ex.weight} lb for ${ex.sets||3} x ${ex.reps||"8-10"}.`:`Choose a strict-form weight for ${ex.sets||3} x ${ex.reps||"8-10"}.`,last:"No history",best:"No PR",reason:"COACH needs one logged session first."};
+    }
+    const sets=last.exercise.sets||[];
+    const top=sets.slice().sort((a,b)=>(n(b.weight)*n(b.reps))-(n(a.weight)*n(a.reps)))[0];
+    const allHigh=sets.length>=n(ex.sets||3)&&sets.every(s=>n(s.reps)>=high);
+    const anyLow=sets.some(s=>n(s.reps)<low);
+    if(allHigh)return{status:"Increase",next:`Increase to ${n(top.weight)+5} lb and aim for ${low}-${high} reps.`,last:sets.map(s=>`${s.weight}x${s.reps}`).join(", "),best:best?`${best.weight}x${best.reps} · e1RM ${e1rm(best)}`:"No PR",reason:"You earned the top of the rep range across all working sets."};
+    if(anyLow)return{status:"Hold",next:`Stay at ${n(top.weight)} lb until every set reaches at least ${low} reps.`,last:sets.map(s=>`${s.weight}x${s.reps}`).join(", "),best:best?`${best.weight}x${best.reps} · e1RM ${e1rm(best)}`:"No PR",reason:"At least one set is below the bottom of the target range."};
+    if(n(top.reps)>=high)return{status:"Micro-Progress",next:`Try ${n(top.weight)+5} lb on set 1, then return to ${n(top.weight)} lb if form drops.`,last:sets.map(s=>`${s.weight}x${s.reps}`).join(", "),best:best?`${best.weight}x${best.reps} · e1RM ${e1rm(best)}`:"No PR",reason:"Your top set is ready, but the whole exercise has not earned a full jump yet."};
+    return{status:"Earn Reps",next:`Repeat ${n(top.weight)} lb and add 1 rep to at least one set.`,last:sets.map(s=>`${s.weight}x${s.reps}`).join(", "),best:best?`${best.weight}x${best.reps} · e1RM ${e1rm(best)}`:"No PR",reason:"Progress by earning reps before adding load."};
+  }
+
+  function strengthProgressionHTML(){
+    const exs=templateExercises();
+    return `<section class="coach176-panel"><span class="coach176-badge">Strength Intelligence</span><h3>Next Lift Targets</h3><p class="v15-muted">COACH uses your last performance, best set, and rep targets to recommend increase, hold, or earn reps.</p><div class="coach176-list">${exs.length?exs.map(ex=>{const p=progressionFor(ex);return `<div class="coach176-row"><div class="coach176-icon">💪</div><div><strong>${esc(ex.name)}</strong><p><b>${esc(p.status)}</b> · ${esc(p.next)}</p><p>Last: ${esc(p.last)} · Best: ${esc(p.best)}</p><p>${esc(p.reason)}</p></div><span class="coach176-badge">${esc(p.status)}</span></div>`}).join(""):`<p class="v15-muted">No strength template found.</p>`}</div></section>`;
+  }
+
+  function weights(){
+    return (state.weightLogV16||[]).filter(x=>x&&x.date&&n(x.weight)>0).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  }
+  function blockReport(){
+    const w=weights();
+    const first=w[0]||null,last=w[w.length-1]||null;
+    const prs=Array.from(new Set(allExerciseSets().map(x=>x.name))).length;
+    return {
+      startWeight:first?n(first.weight):null,
+      currentWeight:last?n(last.weight):null,
+      weightChange:first&&last?n(last.weight)-n(first.weight):null,
+      workouts:(state.completed||[]).length,
+      liftSessions:(state.liftSessions||[]).length,
+      prs,
+      missed:(state.dailyIntelligenceV174?.missedWorkouts||[]).length,
+      trophies:(state.dailyIntelligenceV174?.trophies||[]).length
+    };
+  }
+
+  function blockReportHTML(){
+    const r=blockReport();
+    return `<section class="coach176-panel"><span class="coach176-badge">Training Block Report</span><h3>Current Block Summary</h3><p class="v15-muted">Snapshot of your current training block.</p><div class="coach176-grid"><div class="coach176-tile"><span>Start Weight</span><strong>${r.startWeight===null?"—":r.startWeight.toFixed(1)} lb</strong></div><div class="coach176-tile"><span>Current Weight</span><strong>${r.currentWeight===null?"—":r.currentWeight.toFixed(1)} lb</strong></div><div class="coach176-tile"><span>Weight Change</span><strong>${r.weightChange===null?"—":`${r.weightChange>0?"+":""}${r.weightChange.toFixed(1)} lb`}</strong></div><div class="coach176-tile"><span>Workouts</span><strong>${r.workouts}</strong></div><div class="coach176-tile"><span>Strength Sessions</span><strong>${r.liftSessions}</strong></div><div class="coach176-tile"><span>PRs</span><strong>${r.prs}</strong></div><div class="coach176-tile"><span>Missed</span><strong>${r.missed}</strong></div><div class="coach176-tile"><span>Awards</span><strong>${r.trophies}</strong></div></div><div class="coach176-actions"><button class="v1531-button-primary" onclick="coach176OpenBlockReport()">Open Report</button><button class="v1531-button-secondary" onclick="coach175OpenPRs()">View PRs</button></div></section>`;
+  }
+
+  function parseRuutText(text){
+    const raw=String(text||"");
+    const find=(keys)=>{
+      for(const k of keys){
+        const re=new RegExp(k+"[^0-9-]*(-?\\d+(?:\\.\\d+)?)","i");
+        const m=raw.match(re);
+        if(m)return Number(m[1]);
+      }
+      return null;
+    };
+    return {
+      date:todayISO(),
+      hrv:find(["HRV","Heart Rate Variability"]),
+      rhr:find(["Resting HR","Resting Heart Rate","RHR"]),
+      vo2:find(["VO2","VO2 Max"]),
+      sleep:find(["Sleep","Sleep Hours"]),
+      exerciseMinutes:find(["Exercise","Exercise Minutes"]),
+      distance:find(["Distance","Walking","Running"]),
+      raw
+    };
+  }
+
+  function readinessColor(entry){
+    let score=70;
+    if(entry.hrv!==null&&entry.hrv<25)score-=20;
+    if(entry.rhr!==null&&entry.rhr>70)score-=12;
+    if(entry.sleep!==null&&entry.sleep<6)score-=18;
+    if(entry.exerciseMinutes!==null&&entry.exerciseMinutes>90)score-=8;
+    if(score>=75)return{color:"GREEN",score,line:"Train normally. Good to push if form is sharp."};
+    if(score>=55)return{color:"YELLOW",score,line:"Maintain. Do not chase max effort today."};
+    return{color:"RED",score,line:"Recovery bias. Reduce load or swap for recovery."};
+  }
+
+  window.coach176OpenRuutImport=function(){
+    showModal(`<div class="v1531-modal-head"><div class="v15-kicker">RUUT Readiness</div><h2>Import Morning Metrics</h2><p>Paste your Shortcut output here.</p></div><textarea id="coach176RuutText" class="coach176-input" rows="8" placeholder="HRV: 34&#10;Resting HR: 61&#10;VO2 Max: 42&#10;Sleep: 7.2&#10;Exercise Minutes: 45&#10;Distance: 4.1"></textarea><div class="coach176-actions"><button class="v1531-button-primary" onclick="coach176SaveRuutImport()">Save Readiness</button><button class="v1531-button-secondary" onclick="hideModal()">Cancel</button></div>`);
+  };
+
+  window.coach176SaveRuutImport=function(){
+    ensure176();
+    const text=document.getElementById("coach176RuutText")?.value||"";
+    const entry=parseRuutText(text);
+    const decision=readinessColor(entry);
+    entry.decision=decision;
+    state.trainingIntelligenceV176.ruutReadiness=state.trainingIntelligenceV176.ruutReadiness.filter(x=>x.date!==entry.date);
+    state.trainingIntelligenceV176.ruutReadiness.push(entry);
+    save();
+    hideModal();
+    try{renderDashboard();}catch(e){}
+    alert(`Readiness saved: ${decision.color} (${decision.score}).`);
+  };
+
+  function ruutReadinessHTML(){
+    const list=state.trainingIntelligenceV176?.ruutReadiness||[];
+    const latest=list[list.length-1]||null;
+    const d=latest?.decision||null;
+    return `<section class="coach176-panel"><span class="coach176-badge">Readiness 2.0</span><h3>${d?`${d.color} · ${d.score}`:"No Morning Metrics"}</h3><p class="v15-muted">${d?esc(d.line):"Paste RUUT Shortcut metrics to produce a Green / Yellow / Red training decision."}</p><div class="coach176-grid"><div class="coach176-tile"><span>HRV</span><strong>${latest?.hrv??"—"}</strong></div><div class="coach176-tile"><span>Resting HR</span><strong>${latest?.rhr??"—"}</strong></div><div class="coach176-tile"><span>Sleep</span><strong>${latest?.sleep??"—"}</strong></div><div class="coach176-tile"><span>Exercise Min</span><strong>${latest?.exerciseMinutes??"—"}</strong></div></div><div class="coach176-actions"><button class="v1531-button-primary" onclick="coach176OpenRuutImport()">Import RUUT Metrics</button><button class="v1531-button-secondary" onclick="showScreen('today')">Today</button></div></section>`;
+  }
+
+  window.coach176OpenBlockReport=function(){
+    showModal(`<div class="v1531-modal-head"><div class="v15-kicker">Training Block</div><h2>Block Report</h2><p>Current block summary.</p></div>${blockReportHTML()}<div class="coach176-actions"><button class="v1531-button-primary" onclick="hideModal()">Done</button><button class="v1531-button-secondary" onclick="coach175OpenPRs()">PRs</button></div>`);
+  };
+
+  const prevDashboard=window.renderDashboard;
+  window.renderDashboard=renderDashboard=function(){
+    if(typeof prevDashboard==="function")prevDashboard();
+    const host=document.getElementById("dashboard");if(!host)return;
+    document.getElementById("coach176Mount")?.remove();
+    host.insertAdjacentHTML("afterbegin",`<div id="coach176Mount">${ruutReadinessHTML()}${strengthProgressionHTML()}${blockReportHTML()}</div>`);
+  };
+
+  const prevStrength=window.renderStrength;
+  window.renderStrength=renderStrength=function(){
+    if(typeof prevStrength==="function")prevStrength();
+    const host=document.getElementById("strength");if(!host||document.getElementById("coach176StrengthMount"))return;
+    host.insertAdjacentHTML("afterbegin",`<div id="coach176StrengthMount">${strengthProgressionHTML()}</div>`);
+  };
+
+  ensure176();
+  window.coach176Diagnostic=function(){
+    return {
+      version:"17.6",
+      ruutEntries:state.trainingIntelligenceV176.ruutReadiness.length,
+      liftSessions:state.liftSessions.length,
+      prs:Array.from(new Set(allExerciseSets().map(x=>x.name))).length,
+      blockReport:blockReport(),
+      dashboardMounted:!!document.querySelector("#coach176Mount")
+    };
+  };
+  window.COACH_TRAINING_INTELLIGENCE_VERSION="17.6";
+})();
