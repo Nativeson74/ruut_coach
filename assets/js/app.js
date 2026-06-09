@@ -9884,3 +9884,210 @@ renderAll();
     };
   };
 })();
+
+
+// ---------- COACH V17.2 PROGRESSIVE OVERLOAD ENGINE ----------
+(function(){
+  /*
+    Adds actual strength progression recommendations from logged lift history.
+    Uses:
+    - last saved sets
+    - best set
+    - estimated 1RM
+    - target rep range
+    - readiness recommendation when available
+  */
+
+  function esc(v){return String(v ?? "").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
+  function n(v){const x=Number(v);return Number.isFinite(x)?x:0;}
+  function e1rm(set){return set ? Math.round(n(set.weight)*(1+(n(set.reps)/30))) : 0;}
+  function highRepTarget(reps){
+    const nums=String(reps||"").match(/\d+/g);
+    if(!nums || !nums.length) return 10;
+    return Number(nums[nums.length-1]) || 10;
+  }
+  function lowRepTarget(reps){
+    const nums=String(reps||"").match(/\d+/g);
+    if(!nums || !nums.length) return 8;
+    return Number(nums[0]) || 8;
+  }
+  function allLiftSessions(){
+    return Array.isArray(state.liftSessions) ? state.liftSessions : [];
+  }
+  function setsForExercise(name){
+    const key=String(name||"").toLowerCase();
+    const rows=[];
+    allLiftSessions().forEach(session=>{
+      (session.exercises||[]).forEach(ex=>{
+        if(String(ex.name||"").toLowerCase()===key){
+          (ex.sets||[]).forEach(set=>rows.push({...set, sessionIso:session.iso||set.iso||"", sessionDate:session.date||""}));
+        }
+      });
+    });
+    return rows.sort((a,b)=>String(b.sessionIso||"").localeCompare(String(a.sessionIso||"")));
+  }
+  function lastWorkoutForExercise(name){
+    const key=String(name||"").toLowerCase();
+    const rows=[];
+    allLiftSessions().forEach(session=>{
+      (session.exercises||[]).forEach(ex=>{
+        if(String(ex.name||"").toLowerCase()===key && Array.isArray(ex.sets) && ex.sets.length){
+          rows.push({session,exercise:ex,sets:ex.sets});
+        }
+      });
+    });
+    return rows.sort((a,b)=>String(b.session.iso||"").localeCompare(String(a.session.iso||"")))[0] || null;
+  }
+  function bestSetForExercise(name){
+    const sets=setsForExercise(name);
+    if(!sets.length) return null;
+    return sets.slice().sort((a,b)=>(n(b.weight)*n(b.reps))-(n(a.weight)*n(a.reps)))[0];
+  }
+  function recommendForExercise(ex){
+    const name=ex?.name || "";
+    const targetHigh=highRepTarget(ex?.reps);
+    const targetLow=lowRepTarget(ex?.reps);
+    const last=lastWorkoutForExercise(name);
+    const best=bestSetForExercise(name);
+
+    if(!last){
+      const base=ex?.weight || ex?.defaultWeight || "";
+      return {
+        status:"Build Baseline",
+        last:"No previous session",
+        best:"No PR yet",
+        recommendation:base ? `Start at ${base} lb and complete ${ex.sets||3} sets of ${ex.reps||"8-10"}.` : `Choose a strict-form weight for ${ex.sets||3} sets of ${ex.reps||"8-10"}.`,
+        reason:"COACH needs one logged session before making stronger progression calls."
+      };
+    }
+
+    const sets=last.sets||[];
+    const top=sets.slice().sort((a,b)=>(n(b.weight)*n(b.reps))-(n(a.weight)*n(a.reps)))[0];
+    const allHitTop=sets.length>=n(ex.sets||3) && sets.every(s=>n(s.reps)>=targetHigh);
+    const anyLow=sets.some(s=>n(s.reps)<targetLow);
+    let status="Maintain";
+    let recommendation=`Repeat ${n(top.weight)} lb and try to add 1 rep on one or more sets.`;
+    let reason="You have logged this movement before. Progress by earning reps before adding load.";
+
+    if(allHitTop){
+      status="Increase";
+      recommendation=`Move to ${n(top.weight)+5} lb and aim for ${targetLow}-${targetHigh} reps.`;
+      reason="You hit the top of the target range across the working sets.";
+    }else if(anyLow){
+      status="Hold";
+      recommendation=`Stay at ${n(top.weight)} lb until all sets reach at least ${targetLow} reps.`;
+      reason="At least one set is below the bottom of the target range.";
+    }else if(n(top.reps)>=targetHigh){
+      status="Micro-Progress";
+      recommendation=`Try ${n(top.weight)+5} lb for the first set, then return to ${n(top.weight)} lb if form drops.`;
+      reason="Your best set reached the top target, but not all sets have earned a full load jump.";
+    }
+
+    return {
+      status,
+      last:sets.map(s=>`${s.weight}x${s.reps}`).join(", "),
+      best:best ? `${best.weight}x${best.reps} · e1RM ${e1rm(best)}` : "No PR yet",
+      recommendation,
+      reason
+    };
+  }
+
+  function currentStrengthTemplate(){
+    try{
+      if(state.activeLiftSessionV155) return state.activeLiftSessionV155;
+      const title=(typeof todayTitle==="function") ? todayTitle() : "";
+      const templateId = title==="Upper A" ? "upperA" : title==="Lower + Core" ? "lowerCore" : title==="Upper B" ? "upperB" : title==="Full Body" ? "fullBody" : "";
+      if(templateId && Array.isArray(state.strengthTemplates)){
+        return state.strengthTemplates.find(t=>t.id===templateId);
+      }
+    }catch(e){}
+    return null;
+  }
+
+  function progressivePanel(template){
+    const exercises=(template?.exercises||[]).slice(0,8);
+    if(!exercises.length){
+      return `<section class="coach172-panel"><span class="coach172-badge">Progressive Overload</span><h3>No Strength Session Active</h3><p class="v15-muted">Start or open a strength workout to see exercise-specific recommendations.</p></section>`;
+    }
+    return `<section id="coach172ProgressiveOverload" class="coach172-panel">
+      <span class="coach172-badge">Progressive Overload</span>
+      <h3>${esc(template.templateName || template.name || "Strength Session")}</h3>
+      <p class="v15-muted">COACH compares your last logged sets and recommends whether to increase, hold, or earn reps.</p>
+      <div class="coach172-list">
+        ${exercises.map(ex=>{
+          const r=recommendForExercise(ex);
+          return `<div class="coach172-row">
+            <div>
+              <strong>${esc(ex.name)}</strong>
+              <p><b>${esc(r.status)}</b> · ${esc(r.recommendation)}</p>
+              <p>Last: ${esc(r.last)} · Best: ${esc(r.best)}</p>
+              <p>${esc(r.reason)}</p>
+            </div>
+            <span class="coach172-badge">${esc(ex.sets||3)} x ${esc(ex.reps||"8-10")}</span>
+          </div>`;
+        }).join("")}
+      </div>
+    </section>`;
+  }
+
+  window.coach172OpenProgressiveOverload = function(){
+    const template=currentStrengthTemplate() || {name:"Recent Strength Work",exercises:[]};
+    if(!template.exercises?.length && Array.isArray(state.strengthTemplates)){
+      template.exercises = state.strengthTemplates.flatMap(t=>t.exercises||[]).slice(0,8);
+      template.name = "Exercise Recommendations";
+    }
+    showModal(`<div class="v1531-modal-head"><div class="v15-kicker">Progressive Overload</div><h2>Next Targets</h2><p>Use these recommendations to progress without guessing.</p></div>${progressivePanel(template)}<div class="coach162-actions"><button class="v1531-button-primary" onclick="hideModal()">Done</button><button class="v1531-button-secondary" onclick="hideModal();showScreen('strength')">Strength</button></div>`);
+  };
+
+  const prevRenderStrength172 = window.renderStrength;
+  window.renderStrength = renderStrength = function(){
+    if(typeof prevRenderStrength172==="function") prevRenderStrength172();
+    const host=document.getElementById("strength");
+    if(!host || document.getElementById("coach172StrengthPanel")) return;
+
+    const active=state.activeLiftSessionV155;
+    const template=active || currentStrengthTemplate();
+
+    host.insertAdjacentHTML("afterbegin", `<section id="coach172StrengthPanel" class="coach172-panel">
+      <span class="coach172-badge">Strength Coach</span>
+      <h3>Progressive Overload</h3>
+      <p class="v15-muted">Recommendations are based on previous sets, best sets, and target rep ranges.</p>
+      <div class="coach172-grid">
+        <div class="coach172-card"><span>Logged Lift Sessions</span><strong>${(state.liftSessions||[]).length}</strong></div>
+        <div class="coach172-card"><span>Available Exercises</span><strong>${Array.isArray(state.exerciseLibraryV162)?state.exerciseLibraryV162.length:"—"}</strong></div>
+      </div>
+      <div class="coach162-actions">
+        <button class="v1531-button-primary" onclick="coach172OpenProgressiveOverload()">View Next Targets</button>
+        <button class="v1531-button-secondary" onclick="coach162OpenExerciseLibrary()">Exercise Library</button>
+      </div>
+    </section>`);
+  };
+
+  const prevDashboard172 = window.renderDashboard;
+  window.renderDashboard = renderDashboard = function(){
+    if(typeof prevDashboard172==="function") prevDashboard172();
+    const host=document.getElementById("dashboard");
+    if(!host || document.getElementById("coach172DashboardPanel")) return;
+
+    const sessions=state.liftSessions||[];
+    const last=sessions.slice(-1)[0];
+    const exCount=last ? (last.exercises||[]).length : 0;
+    const setCount=last ? (last.exercises||[]).reduce((sum,e)=>sum+(e.sets||[]).length,0) : 0;
+
+    host.insertAdjacentHTML("afterbegin", `<section id="coach172DashboardPanel" class="coach172-panel">
+      <span class="coach172-badge">Progression</span>
+      <h3>Strength Progression</h3>
+      <p class="v15-muted">Use logged history to earn reps, hold load, or increase weight.</p>
+      <div class="coach172-grid">
+        <div class="coach172-card"><span>Last Session</span><strong>${last?esc(last.templateName||"Strength"):"None"}</strong></div>
+        <div class="coach172-card"><span>Last Volume</span><strong>${setCount} sets</strong></div>
+      </div>
+      <div class="coach162-actions">
+        <button class="v1531-button-primary" onclick="coach172OpenProgressiveOverload()">View Next Targets</button>
+        <button class="v1531-button-secondary" onclick="showScreen('strength')">Strength</button>
+      </div>
+    </section>`);
+  };
+
+  window.COACH_PROGRESSIVE_OVERLOAD_VERSION="17.2";
+})();

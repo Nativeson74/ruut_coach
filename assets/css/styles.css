@@ -1008,3 +1008,74 @@ body.ruut-v15 nav button[data-target="strength"].active{color:var(--v15-lime)!im
 .coach17-day b{display:block;font-size:10px;color:#b6ff00;letter-spacing:.08em}
 .coach17-day span{display:block;margin-top:6px;font-size:10px;line-height:1.15;color:#e9eef6;font-weight:800}
 @media(max-width:520px){.coach17-phase-grid{grid-template-columns:1fr 1fr}.coach17-calendar{grid-template-columns:1fr 1fr}}
+
+
+/* ---------- COACH v17.2 PROGRESSIVE OVERLOAD ENGINE ---------- */
+.coach172-panel{
+  border-radius:28px;
+  padding:18px;
+  border:1px solid rgba(182,255,0,.25);
+  background:
+    radial-gradient(circle at 100% 0%,rgba(182,255,0,.14),transparent 38%),
+    linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.035));
+}
+.coach172-panel h3{
+  margin:8px 0!important;
+  font-size:26px!important;
+  letter-spacing:-.05em!important;
+}
+.coach172-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+  margin-top:12px;
+}
+.coach172-card{
+  border-radius:20px;
+  padding:13px;
+  border:1px solid rgba(255,255,255,.11);
+  background:rgba(0,0,0,.22);
+}
+.coach172-card span{
+  display:block;
+  color:#aeb8c6;
+  font-size:10px;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  font-weight:900;
+}
+.coach172-card strong{
+  display:block;
+  margin-top:5px;
+  color:#f6f8fb;
+  font-size:18px;
+}
+.coach172-list{
+  display:grid;
+  gap:8px;
+  margin-top:12px;
+}
+.coach172-row{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:10px;
+  align-items:center;
+  padding:12px;
+  border-radius:18px;
+  border:1px solid rgba(255,255,255,.09);
+  background:rgba(0,0,0,.22);
+}
+.coach172-row strong{display:block;color:#f6f8fb}
+.coach172-row p{margin:4px 0 0;color:#aeb8c6;font-size:12px;line-height:1.35}
+.coach172-badge{
+  border-radius:999px;
+  padding:6px 9px;
+  border:1px solid rgba(182,255,0,.32);
+  background:rgba(182,255,0,.12);
+  color:#b6ff00;
+  font-size:10px;
+  font-weight:950;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+}
+@media(max-width:520px){.coach172-grid{grid-template-columns:1fr}.coach172-row{grid-template-columns:1fr}}
