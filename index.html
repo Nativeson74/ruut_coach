@@ -10,7 +10,6 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="COACH" />
-<meta name="mobile-web-app-capable" content="yes" />
 <meta name="theme-color" content="#050914" />
 <title>COACH</title>
 <link rel="stylesheet" href="./assets/css/styles.css" />
@@ -39,14 +38,5 @@
 <div id="modal" class="modal" onclick="closeModal(event)"><div class="card" onclick="event.stopPropagation()"><div id="modalContent"></div></div></div>
 
 <script src="./assets/js/app.js" defer></script>
-<script>
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(error => {
-      console.warn("Service worker registration failed:", error);
-    });
-  });
-}
-</script>
 </body>
 </html>

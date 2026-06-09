@@ -2,7 +2,6 @@
   "name": "COACH",
   "short_name": "COACH",
   "description": "Goal-based training, strength, recovery, and progress tracking.",
-  "id": "./",
   "display": "standalone",
   "orientation": "portrait",
   "start_url": "./",
