@@ -11184,3 +11184,106 @@ renderAll();
   };
   window.COACH_TRAINING_INTELLIGENCE_VERSION="17.6";
 })();
+
+
+// ---------- COACH V17.6.1 TRAINING INTELLIGENCE STATS MOUNT ----------
+(function(){
+  function esc(v){return String(v ?? "").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
+  function n(v){const x=Number(v);return Number.isFinite(x)?x:0;}
+  function ensure(){
+    state.trainingIntelligenceV176=state.trainingIntelligenceV176||{};
+    state.trainingIntelligenceV176.version="17.6.1";
+    state.trainingIntelligenceV176.ruutReadiness=Array.isArray(state.trainingIntelligenceV176.ruutReadiness)?state.trainingIntelligenceV176.ruutReadiness:[];
+    state.liftSessions=Array.isArray(state.liftSessions)?state.liftSessions:[];
+    state.completed=Array.isArray(state.completed)?state.completed:[];
+    state.weightLogV16=Array.isArray(state.weightLogV16)?state.weightLogV16:[];
+  }
+  function allSets(){
+    const out=[];
+    (state.liftSessions||[]).forEach(session=>{
+      (session.exercises||[]).forEach(ex=>{
+        (ex.sets||[]).forEach(set=>{
+          out.push({name:ex.name,weight:n(set.weight),reps:n(set.reps),session,iso:session.iso||set.iso||""});
+        });
+      });
+    });
+    return out.filter(x=>x.name && x.weight && x.reps);
+  }
+  function e1rm(set){return set?Math.round(n(set.weight)*(1+n(set.reps)/30)):0;}
+  function prList(){
+    const best={};
+    allSets().forEach(set=>{
+      const key=String(set.name||"").toLowerCase();
+      const score=e1rm(set);
+      if(!best[key] || score>best[key].e1rm) best[key]={...set,e1rm:score};
+    });
+    return Object.values(best).sort((a,b)=>b.e1rm-a.e1rm);
+  }
+  function lastSession(){
+    return (state.liftSessions||[]).slice().sort((a,b)=>String(b.iso||"").localeCompare(String(a.iso||"")))[0]||null;
+  }
+  function progressionRows(){
+    const session=lastSession();
+    if(!session || !(session.exercises||[]).length){
+      return `<p class="v15-muted">No saved strength session yet. Save one Strength workout to unlock next targets.</p>`;
+    }
+    return (session.exercises||[]).map(ex=>{
+      const sets=ex.sets||[];
+      const top=sets.slice().sort((a,b)=>(n(b.weight)*n(b.reps))-(n(a.weight)*n(a.reps)))[0];
+      if(!top) return `<div class="coach1761-row"><div class="coach1761-icon">💪</div><div><strong>${esc(ex.name)}</strong><p>No set data saved for this exercise.</p></div><span class="coach1761-badge">Log</span></div>`;
+      const nums=String(ex.reps||"10").match(/\d+/g)||["10"];
+      const low=Number(nums[0])||8, high=Number(nums[nums.length-1])||10;
+      let status="Earn Reps", next=`Repeat ${top.weight} lb and add 1 rep.`;
+      if(n(top.reps)>=high){status="Increase";next=`Try ${n(top.weight)+5} lb for ${low}-${high} reps.`;}
+      else if(n(top.reps)<low){status="Hold";next=`Stay at ${top.weight} lb until you reach ${low}+ reps.`;}
+      return `<div class="coach1761-row"><div class="coach1761-icon">💪</div><div><strong>${esc(ex.name)}</strong><p><b>${status}</b> · ${esc(next)}</p><p>Last best: ${esc(top.weight)} x ${esc(top.reps)} · e1RM ${e1rm(top)}</p></div><span class="coach1761-badge">${esc(status)}</span></div>`;
+    }).join("");
+  }
+  function blockReport(){
+    const weights=(state.weightLogV16||[]).filter(x=>x&&x.weight).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+    const first=weights[0]||null,last=weights[weights.length-1]||null;
+    const weightChange=first&&last?n(last.weight)-n(first.weight):null;
+    return {workouts:(state.completed||[]).length,liftSessions:(state.liftSessions||[]).length,prs:prList().length,weightChange,missed:(state.dailyIntelligenceV174?.missedWorkouts||[]).length,awards:(state.dailyIntelligenceV174?.trophies||[]).length};
+  }
+  function readinessPanel(){
+    const latest=(state.trainingIntelligenceV176?.ruutReadiness||[]).slice(-1)[0];
+    const d=latest?.decision||null;
+    return `<section id="coach1761Readiness" class="coach1761-panel"><span class="coach1761-badge">Readiness 2.0</span><h3>${d?`${esc(d.color)} · ${esc(d.score)}`:"No Morning Metrics"}</h3><p class="v15-muted">${d?esc(d.line):"Import RUUT Shortcut metrics to produce Green / Yellow / Red training decisions."}</p><div class="coach1761-actions"><button class="v1531-button-primary" onclick="coach176OpenRuutImport ? coach176OpenRuutImport() : alert('RUUT import not available')">Import RUUT Metrics</button><button class="v1531-button-secondary" onclick="showScreen('today')">Today</button></div></section>`;
+  }
+  function strengthPanel(){
+    const prs=prList();
+    return `<section id="coach1761Strength" class="coach1761-panel"><span class="coach1761-badge">Strength Intelligence</span><h3>Next Lift Targets</h3><p class="v15-muted">Based on your latest saved strength session and best-set history.</p><div class="coach1761-grid"><div class="coach1761-tile"><span>Lift Sessions</span><strong>${(state.liftSessions||[]).length}</strong></div><div class="coach1761-tile"><span>Tracked PRs</span><strong>${prs.length}</strong></div></div><div class="coach1761-list">${progressionRows()}</div><div class="coach1761-actions"><button class="v1531-button-primary" onclick="coach1761OpenPRs()">View PRs</button><button class="v1531-button-secondary" onclick="showScreen('strength')">Strength</button></div></section>`;
+  }
+  function blockPanel(){
+    const b=blockReport();
+    return `<section id="coach1761Block" class="coach1761-panel"><span class="coach1761-badge">Training Block Report</span><h3>Current Block Summary</h3><div class="coach1761-grid"><div class="coach1761-tile"><span>Workouts</span><strong>${b.workouts}</strong></div><div class="coach1761-tile"><span>Strength Sessions</span><strong>${b.liftSessions}</strong></div><div class="coach1761-tile"><span>PRs</span><strong>${b.prs}</strong></div><div class="coach1761-tile"><span>Weight Change</span><strong>${b.weightChange===null?"—":`${b.weightChange>0?"+":""}${b.weightChange.toFixed(1)} lb`}</strong></div><div class="coach1761-tile"><span>Missed</span><strong>${b.missed}</strong></div><div class="coach1761-tile"><span>Awards</span><strong>${b.awards}</strong></div></div></section>`;
+  }
+  function mountStats(){
+    ensure();
+    const host=document.getElementById("dashboard");
+    if(!host) return;
+    document.getElementById("coach1761Mount")?.remove();
+    host.insertAdjacentHTML("afterbegin", `<div id="coach1761Mount">${readinessPanel()}${strengthPanel()}${blockPanel()}</div>`);
+  }
+  window.coach1761OpenPRs=function(){
+    const prs=prList();
+    showModal(`<div class="v1531-modal-head"><div class="v15-kicker">Strength PRs</div><h2>Personal Records</h2><p>Estimated 1RM by exercise from logged sets.</p></div><section class="coach1761-panel"><div class="coach1761-list">${prs.length?prs.map(p=>`<div class="coach1761-row"><div class="coach1761-icon">⭐</div><div><strong>${esc(p.name)}</strong><p>${p.weight} x ${p.reps} · e1RM ${p.e1rm}</p></div><span class="coach1761-badge">PR</span></div>`).join(""):`<p class="v15-muted">No PRs yet.</p>`}</div></section><div class="coach1761-actions"><button class="v1531-button-primary" onclick="hideModal()">Done</button><button class="v1531-button-secondary" onclick="showScreen('strength')">Strength</button></div>`);
+  };
+  const prevDashboard=window.renderDashboard;
+  window.renderDashboard=renderDashboard=function(){
+    if(typeof prevDashboard==="function") prevDashboard();
+    mountStats();
+  };
+  const prevShow=window.showScreen;
+  window.showScreen=showScreen=function(id,btn){
+    const result=typeof prevShow==="function" ? prevShow(id,btn) : undefined;
+    if(id==="dashboard" || id==="stats"){setTimeout(mountStats,0);setTimeout(mountStats,150);}
+    return result;
+  };
+  const prevAll=window.renderAll;
+  window.renderAll=renderAll=function(){if(typeof prevAll==="function") prevAll();setTimeout(mountStats,0);};
+  ensure();
+  if(document.getElementById("dashboard")?.classList.contains("active")) mountStats();
+  window.coach1761Diagnostic=function(){return{version:"17.6.1",mounted:!!document.querySelector("#coach1761Mount"),liftSessions:(state.liftSessions||[]).length,prs:prList().length,lastSession:lastSession(),blockReport:blockReport()}};
+  window.COACH_TRAINING_INTELLIGENCE_VERSION="17.6.1";
+})();
