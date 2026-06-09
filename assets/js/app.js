@@ -10682,3 +10682,296 @@ renderAll();
   if(window.ruut14Final){window.ruut14Final.renderToday=renderTodayHard;window.ruut14Final.renderPlan=renderGoalsHard;window.ruut14Final.renderDashboard=renderStatsHard;window.ruut14Final.renderAll=window.renderAll;window.ruut14Final.showScreen=window.showScreen}
   ensure();updateTrophies();shell();const active=document.querySelector(".screen.active")?.id||"today";if(active==="today")renderTodayHard();if(active==="plan")renderGoalsHard();if(active==="dashboard")renderStatsHard();window.COACH_DAILY_INTELLIGENCE_VERSION="17.4.2";
 })();
+
+
+// ---------- COACH V17.5 PERFORMANCE + INTELLIGENCE ----------
+(function(){
+  /*
+    Adds:
+    - Real rollover utility/test function
+    - Missed workout tracking utilities
+    - Trophy unlock notifications
+    - Strength PR engine
+    - Streak and consistency tracking
+    - Readiness trend panel
+    - RENPHO / Apple Health import pathway instructions
+    - Diagnostic function
+  */
+
+  function esc(v){return String(v ?? "").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
+  function n(v){const x=Number(v);return Number.isFinite(x)?x:0;}
+  function save(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(state));}catch(e){}}
+  function localISO(d=new Date()){const x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10);}
+  function parseISODate(s){const d=new Date(String(s)+"T12:00:00");return Number.isFinite(d.getTime())?d:new Date();}
+  function addDaysISO(s,days){const d=parseISODate(s);d.setDate(d.getDate()+days);return localISO(d);}
+  function daysBetween(a,b){return Math.max(0,Math.round((parseISODate(b)-parseISODate(a))/86400000));}
+
+  function ensure175(){
+    state.dailyIntelligenceV174=state.dailyIntelligenceV174||{};
+    state.dailyIntelligenceV174.version="17.5";
+    state.dailyIntelligenceV174.lastActiveDate=state.dailyIntelligenceV174.lastActiveDate||localISO();
+    state.dailyIntelligenceV174.missedWorkouts=Array.isArray(state.dailyIntelligenceV174.missedWorkouts)?state.dailyIntelligenceV174.missedWorkouts:[];
+    state.dailyIntelligenceV174.trophies=Array.isArray(state.dailyIntelligenceV174.trophies)?state.dailyIntelligenceV174.trophies:[];
+    state.dailyIntelligenceV174.goalWeight=state.dailyIntelligenceV174.goalWeight ?? null;
+
+    state.performanceV175=state.performanceV175||{};
+    state.performanceV175.version="17.5";
+    state.performanceV175.awardLog=Array.isArray(state.performanceV175.awardLog)?state.performanceV175.awardLog:[];
+    state.performanceV175.prLog=Array.isArray(state.performanceV175.prLog)?state.performanceV175.prLog:[];
+    state.performanceV175.rolloverLog=Array.isArray(state.performanceV175.rolloverLog)?state.performanceV175.rolloverLog:[];
+    state.performanceV175.readinessLog=Array.isArray(state.performanceV175.readinessLog)?state.performanceV175.readinessLog:[];
+
+    state.completed=Array.isArray(state.completed)?state.completed:[];
+    state.liftSessions=Array.isArray(state.liftSessions)?state.liftSessions:[];
+    state.weightLogV16=Array.isArray(state.weightLogV16)?state.weightLogV16:[];
+    state.workoutDebriefs=Array.isArray(state.workoutDebriefs)?state.workoutDebriefs:[];
+  }
+
+  function workoutKey(){return `${Number(state.week||1)}-${Number(state.dayIndex||1)}`;}
+  function workoutTitle(){
+    try{
+      if(typeof currentWorkout==="function"){
+        const w=currentWorkout();
+        return w?.title || "Workout";
+      }
+    }catch(e){}
+    return "Workout";
+  }
+  function completedTodayKey(){return (state.completed||[]).includes(workoutKey());}
+  function markMissed(date){
+    ensure175();
+    const key=workoutKey();
+    const exists=state.dailyIntelligenceV174.missedWorkouts.some(x=>x.date===date && x.key===key);
+    if(!exists && !completedTodayKey()){
+      state.dailyIntelligenceV174.missedWorkouts.push({
+        date,
+        key,
+        week:Number(state.week||1),
+        dayIndex:Number(state.dayIndex||1),
+        title:workoutTitle(),
+        iso:new Date().toISOString()
+      });
+    }
+  }
+  function advanceDay(){
+    state.dayIndex=Number(state.dayIndex||1)+1;
+    if(state.dayIndex>7){
+      state.dayIndex=1;
+      state.week=Number(state.week||1)+1;
+    }
+  }
+  function runRolloverTo(today=localISO()){
+    ensure175();
+    let last=state.dailyIntelligenceV174.lastActiveDate || today;
+    if(last===today) return {changed:false,days:0};
+    let gap=daysBetween(last,today);
+    if(gap>30) gap=30;
+    let processed=0;
+    for(let i=0;i<gap;i++){
+      markMissed(last);
+      advanceDay();
+      last=addDaysISO(last,1);
+      processed++;
+    }
+    state.dailyIntelligenceV174.lastActiveDate=today;
+    state.performanceV175.rolloverLog.push({iso:new Date().toISOString(),toDate:today,days:processed});
+    save();
+    return {changed:true,days:processed};
+  }
+
+  function weights(){ensure175();return (state.weightLogV16||[]).filter(x=>x&&x.date&&n(x.weight)>0).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));}
+  function avg(rows){return rows.length?rows.reduce((s,x)=>s+n(x.weight),0)/rows.length:null;}
+  function fw(v){return v===null||v===undefined||Number.isNaN(Number(v))?"—":Number(v).toFixed(1);}
+  function weightStreak(){
+    const rows=weights();
+    if(!rows.length) return 0;
+    const dates=new Set(rows.map(x=>x.date));
+    let count=0,cursor=localISO();
+    while(dates.has(cursor)){count++;cursor=addDaysISO(cursor,-1);if(count>365)break;}
+    return count;
+  }
+  function currentWeight(){const rows=weights();return rows[rows.length-1]||null;}
+
+  function strengthPRs(){
+    const best={};
+    (state.liftSessions||[]).forEach(session=>{
+      (session.exercises||[]).forEach(ex=>{
+        (ex.sets||[]).forEach(set=>{
+          const name=String(ex.name||"").trim();
+          if(!name) return;
+          const score=n(set.weight)*n(set.reps);
+          const e1rm=Math.round(n(set.weight)*(1+n(set.reps)/30));
+          if(!best[name] || e1rm>best[name].e1rm){
+            best[name]={name,weight:n(set.weight),reps:n(set.reps),e1rm,score,iso:session.iso||set.iso||""};
+          }
+        });
+      });
+    });
+    return Object.values(best).sort((a,b)=>b.e1rm-a.e1rm);
+  }
+  function workoutCount(){return (state.completed||[]).length;}
+  function strengthCount(){return (state.liftSessions||[]).length;}
+  function recoveryCount(){return n(state.recoverySessions||0)+(Array.isArray(state.recoverySessionLogV154)?state.recoverySessionLogV154.length:0);}
+  function missedCount(){return (state.dailyIntelligenceV174?.missedWorkouts||[]).length;}
+
+  function trophyDefs(){
+    const prs=strengthPRs().length;
+    return [
+      ["firstWorkout","🏁","First Workout","Complete your first workout.",workoutCount()>=1],
+      ["tenWorkouts","🔥","10 Workouts","Complete 10 workouts.",workoutCount()>=10],
+      ["fiftyWorkouts","🏅","50 Workouts","Complete 50 workouts.",workoutCount()>=50],
+      ["hundredWorkouts","🏆","100 Workouts","Complete 100 workouts.",workoutCount()>=100],
+      ["firstStrength","💪","First Strength Session","Save your first strength session.",strengthCount()>=1],
+      ["fiftyStrength","🦾","50 Strength Sessions","Save 50 strength sessions.",strengthCount()>=50],
+      ["firstPR","⭐","First PR","Log your first exercise PR.",prs>=1],
+      ["tenPRs","🌟","10 PRs","Build PR history across 10 exercises.",prs>=10],
+      ["firstRecovery","🧘","First Recovery","Complete your first recovery session.",recoveryCount()>=1],
+      ["twentyFiveRecovery","🛡️","25 Recovery Sessions","Complete 25 recovery sessions.",recoveryCount()>=25],
+      ["sevenWeighIns","⚖️","7-Day Weigh-In Streak","Log weight 7 consecutive days.",weightStreak()>=7],
+      ["thirtyWeighIns","📈","30-Day Weigh-In Streak","Log weight 30 consecutive days.",weightStreak()>=30],
+      ["cleanStart","✅","Clean Start","No missed workouts recorded.",missedCount()===0]
+    ];
+  }
+
+  function toastAward(title,desc,icon){
+    try{
+      const old=document.getElementById("coach175Toast");
+      if(old) old.remove();
+      const div=document.createElement("div");
+      div.id="coach175Toast";
+      div.className="coach175-toast";
+      div.innerHTML=`<strong>${icon||"🏆"} Achievement Unlocked: ${esc(title)}</strong><p>${esc(desc)}</p>`;
+      document.body.appendChild(div);
+      setTimeout(()=>div.remove(),5200);
+    }catch(e){}
+  }
+
+  function updateAwards(showToast=true){
+    ensure175();
+    const unlocked=new Set(state.dailyIntelligenceV174.trophies||[]);
+    const newly=[];
+    trophyDefs().forEach(t=>{
+      if(t[4] && !unlocked.has(t[0])){
+        unlocked.add(t[0]);
+        newly.push(t);
+        state.performanceV175.awardLog.push({id:t[0],title:t[2],desc:t[3],icon:t[1],iso:new Date().toISOString()});
+      }
+    });
+    state.dailyIntelligenceV174.trophies=[...unlocked];
+    save();
+    if(showToast && newly.length){
+      const t=newly[0];
+      toastAward(t[2],t[3],t[1]);
+    }
+    return newly;
+  }
+
+  function readinessSnapshot(){
+    let score=70;
+    let status="Maintain";
+    const debriefText=(state.workoutDebriefs||[]).slice(-5).map(x=>`${x.feel||""} ${x.issue||""} ${x.note||""}`).join(" ").toLowerCase();
+    const pain=/pain|sharp|injury|hurt/.test(debriefText);
+    const fatigue=/sore|tired|fatigue|exhausted|hard/.test(debriefText);
+    if(pain){score=40;status="Recovery Recommended";}
+    else if(fatigue){score=58;status="Hold";}
+    else if(workoutCount()>=3){score=78;status="Proceed";}
+    return {score,status,iso:new Date().toISOString()};
+  }
+  function logReadiness(){
+    ensure175();
+    const today=localISO();
+    const exists=state.performanceV175.readinessLog.some(x=>String(x.iso||"").slice(0,10)===today);
+    if(!exists){
+      state.performanceV175.readinessLog.push(readinessSnapshot());
+      if(state.performanceV175.readinessLog.length>90) state.performanceV175.readinessLog=state.performanceV175.readinessLog.slice(-90);
+      save();
+    }
+  }
+
+  function bodyMetricsHTML(){
+    const rows=weights(),latest=rows[rows.length-1]||null,avg7=avg(rows.slice(-7)),avg30=avg(rows.slice(-30));
+    const first=rows[0]||null;
+    const delta=latest&&first?n(latest.weight)-n(first.weight):null;
+    const goal=state.dailyIntelligenceV174.goalWeight??null;
+    const toGoal=latest&&goal?n(latest.weight)-n(goal):null;
+    return `<section class="coach175-panel"><span class="coach175-badge">Body Metrics</span><h3>Weight Intelligence</h3><p class="v15-muted">RENPHO path: RENPHO → Apple Health → iOS Shortcut → COACH weight entry/import.</p><div class="coach175-grid"><div class="coach175-tile"><span>Current</span><strong>${fw(latest?.weight)} lb</strong></div><div class="coach175-tile"><span>7-Day Avg</span><strong>${fw(avg7)} lb</strong></div><div class="coach175-tile"><span>30-Day Avg</span><strong>${fw(avg30)} lb</strong></div><div class="coach175-tile"><span>Trend</span><strong>${delta===null?"—":`${delta>0?"+":""}${delta.toFixed(1)} lb`}</strong></div><div class="coach175-tile"><span>Goal</span><strong>${goal?fw(goal)+" lb":"—"}</strong></div><div class="coach175-tile"><span>To Goal</span><strong>${toGoal===null?"—":`${toGoal>0?"+":""}${toGoal.toFixed(1)} lb`}</strong></div></div><div class="coach175-actions"><button class="v1531-button-primary" onclick="coachV16OpenWeight()">Add Weight</button><button class="v1531-button-secondary" onclick="coach175OpenRenphoPath()">RENPHO Path</button></div></section>`;
+  }
+
+  function awardsHTML(limit=999){
+    updateAwards(false);
+    const unlocked=new Set(state.dailyIntelligenceV174.trophies||[]);
+    return `<section class="coach175-panel"><span class="coach175-badge">Awards</span><h3>Trophy Cabinet</h3><p class="v15-muted">${unlocked.size} of ${trophyDefs().length} unlocked.</p><div class="coach175-list">${trophyDefs().slice(0,limit).map(t=>{const on=unlocked.has(t[0]);return `<div class="coach175-row ${on?"":"locked"}"><div class="coach175-icon">${t[1]}</div><div><strong>${esc(t[2])}</strong><p>${esc(t[3])}</p></div><span class="coach175-badge">${on?"Unlocked":"Locked"}</span></div>`}).join("")}</div></section>`;
+  }
+
+  function rolloverHTML(){
+    const miss=state.dailyIntelligenceV174.missedWorkouts||[];
+    return `<section class="coach175-panel"><span class="coach175-badge">Daily Rollover</span><h3>Midnight System</h3><p class="v15-muted">Last active date: ${esc(state.dailyIntelligenceV174.lastActiveDate)}. If the app opens after midnight, unfinished workouts are logged as missed and the program advances.</p><div class="coach175-grid"><div class="coach175-tile"><span>Missed Workouts</span><strong>${miss.length}</strong></div><div class="coach175-tile"><span>Program Position</span><strong>${Number(state.week||1)}.${Number(state.dayIndex||1)}</strong></div></div><div class="coach175-actions"><button class="v1531-button-primary" onclick="coach175TestRollover()">Test Rollover</button><button class="v1531-button-secondary" onclick="coach175OpenMissed()">View Missed</button></div></section>`;
+  }
+
+  function intelligenceHTML(){
+    const r=readinessSnapshot();
+    const prs=strengthPRs();
+    return `<section class="coach175-panel"><span class="coach175-badge">Performance Intelligence</span><h3>${esc(r.status)}</h3><p class="v15-muted">Readiness score: ${r.score}. PRs tracked: ${prs.length}. Workout completions: ${workoutCount()}.</p><div class="coach175-grid"><div class="coach175-tile"><span>Readiness</span><strong>${r.score}</strong></div><div class="coach175-tile"><span>Strength PRs</span><strong>${prs.length}</strong></div><div class="coach175-tile"><span>Recovery</span><strong>${recoveryCount()}</strong></div><div class="coach175-tile"><span>Weigh-In Streak</span><strong>${weightStreak()}</strong></div></div><div class="coach175-actions"><button class="v1531-button-primary" onclick="coach175OpenPRs()">View PRs</button><button class="v1531-button-secondary" onclick="coach175OpenAwards()">Awards</button></div></section>`;
+  }
+
+  window.coach175OpenAwards=function(){
+    showModal(`<div class="v1531-modal-head"><div class="v15-kicker">Awards</div><h2>Trophy Cabinet</h2><p>Unlocked and locked achievements.</p></div>${awardsHTML()}<div class="coach175-actions"><button class="v1531-button-primary" onclick="hideModal()">Done</button><button class="v1531-button-secondary" onclick="hideModal();showScreen('dashboard')">Stats</button></div>`);
+  };
+  window.coach175OpenPRs=function(){
+    const prs=strengthPRs();
+    showModal(`<div class="v1531-modal-head"><div class="v15-kicker">Strength PRs</div><h2>Personal Records</h2><p>Estimated 1RM by exercise from logged sets.</p></div><section class="coach175-panel"><div class="coach175-list">${prs.length?prs.map(p=>`<div class="coach175-row"><div class="coach175-icon">⭐</div><div><strong>${esc(p.name)}</strong><p>${p.weight} x ${p.reps} · e1RM ${p.e1rm}</p></div><span class="coach175-badge">PR</span></div>`).join(""):`<p class="v15-muted">No PRs yet. Log strength sessions to build this list.</p>`}</div></section><div class="coach175-actions"><button class="v1531-button-primary" onclick="hideModal()">Done</button><button class="v1531-button-secondary" onclick="hideModal();showScreen('strength')">Strength</button></div>`);
+  };
+  window.coach175OpenMissed=function(){
+    const miss=(state.dailyIntelligenceV174.missedWorkouts||[]).slice().reverse();
+    showModal(`<div class="v1531-modal-head"><div class="v15-kicker">Missed Workouts</div><h2>Rollover Log</h2><p>Workouts missed after midnight rollover.</p></div><section class="coach175-panel"><div class="coach175-list">${miss.length?miss.map(m=>`<div class="coach175-row"><div class="coach175-icon">⏭️</div><div><strong>${esc(m.title||"Workout")}</strong><p>${esc(m.date)} · Week ${esc(m.week)} Day ${esc(m.dayIndex)}</p></div><span class="coach175-badge">Missed</span></div>`).join(""):`<p class="v15-muted">No missed workouts recorded.</p>`}</div></section><div class="coach175-actions"><button class="v1531-button-primary" onclick="hideModal()">Done</button><button class="v1531-button-secondary" onclick="hideModal();showScreen('dashboard')">Stats</button></div>`);
+  };
+  window.coach175OpenRenphoPath=function(){
+    showModal(`<div class="v1531-modal-head"><div class="v15-kicker">RENPHO Path</div><h2>Weight Import</h2><p>A browser PWA cannot directly read RENPHO. Use this path instead.</p></div><section class="coach175-panel"><div class="coach175-list"><div class="coach175-row"><div class="coach175-icon">1</div><div><strong>RENPHO syncs weight</strong><p>RENPHO writes your daily weight to Apple Health.</p></div><span class="coach175-badge">Source</span></div><div class="coach175-row"><div class="coach175-icon">2</div><div><strong>iOS Shortcut reads Apple Health</strong><p>The Shortcut pulls the latest body mass sample.</p></div><span class="coach175-badge">Bridge</span></div><div class="coach175-row"><div class="coach175-icon">3</div><div><strong>Shortcut opens COACH import</strong><p>For now, paste/add the weight into COACH. Later we can build an import URL handler.</p></div><span class="coach175-badge">COACH</span></div></div></section><div class="coach175-actions"><button class="v1531-button-primary" onclick="hideModal()">Done</button><button class="v1531-button-secondary" onclick="hideModal();coachV16OpenWeight()">Add Weight</button></div>`);
+  };
+  window.coach175TestRollover=function(){
+    ensure175();
+    const yesterday=addDaysISO(localISO(),-1);
+    state.dailyIntelligenceV174.lastActiveDate=yesterday;
+    const result=runRolloverTo(localISO());
+    save();
+    try{renderDashboard();}catch(e){}
+    alert(`Rollover test complete. Days processed: ${result.days}.`);
+  };
+
+  const prevDashboard=window.renderDashboard;
+  window.renderDashboard=renderDashboard=function(){
+    if(typeof prevDashboard==="function") prevDashboard();
+    const host=document.getElementById("dashboard"); if(!host) return;
+    document.getElementById("coach175Mount")?.remove();
+    host.insertAdjacentHTML("afterbegin", `<div id="coach175Mount">${intelligenceHTML()}${bodyMetricsHTML()}${awardsHTML(6)}${rolloverHTML()}</div>`);
+  };
+
+  const prevRenderAll=window.renderAll;
+  window.renderAll=renderAll=function(){
+    runRolloverTo(localISO());
+    logReadiness();
+    updateAwards(true);
+    if(typeof prevRenderAll==="function") prevRenderAll();
+  };
+
+  ensure175();
+  runRolloverTo(localISO());
+  logReadiness();
+  updateAwards(true);
+
+  window.coach175Diagnostic=function(){
+    return {
+      version:"17.5",
+      dailyIntelligence:state.dailyIntelligenceV174,
+      performance:state.performanceV175,
+      weightEntries:weights().length,
+      trophies:state.dailyIntelligenceV174.trophies,
+      prs:strengthPRs().length,
+      missed:state.dailyIntelligenceV174.missedWorkouts.length,
+      readinessLog:state.performanceV175.readinessLog.length,
+      awardsPanel:!!document.querySelector("#coach175Mount")
+    };
+  };
+
+  window.COACH_PERFORMANCE_INTELLIGENCE_VERSION="17.5";
+})();
