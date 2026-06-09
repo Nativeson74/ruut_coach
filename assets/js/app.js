@@ -11287,3 +11287,288 @@ renderAll();
   window.coach1761Diagnostic=function(){return{version:"17.6.1",mounted:!!document.querySelector("#coach1761Mount"),liftSessions:(state.liftSessions||[]).length,prs:prList().length,lastSession:lastSession(),blockReport:blockReport()}};
   window.COACH_TRAINING_INTELLIGENCE_VERSION="17.6.1";
 })();
+
+
+// ---------- COACH V17.6.2 MOUNT + SET VALIDATION ----------
+(function(){
+  /*
+    Fixes:
+    - Hard-mounts Training Intelligence directly onto Stats.
+    - Reattaches if later renderers overwrite it.
+    - Treats weight > 0 and reps = 0 as incomplete.
+    - Calculates PRs only from completed sets.
+  */
+
+  function esc(v){return String(v ?? "").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
+  function n(v){const x=Number(v);return Number.isFinite(x)?x:0;}
+
+  function ensure(){
+    state.trainingIntelligenceV176=state.trainingIntelligenceV176||{};
+    state.trainingIntelligenceV176.version="17.6.2";
+    state.trainingIntelligenceV176.ruutReadiness=Array.isArray(state.trainingIntelligenceV176.ruutReadiness)?state.trainingIntelligenceV176.ruutReadiness:[];
+    state.liftSessions=Array.isArray(state.liftSessions)?state.liftSessions:[];
+    state.completed=Array.isArray(state.completed)?state.completed:[];
+    state.weightLogV16=Array.isArray(state.weightLogV16)?state.weightLogV16:[];
+    try{localStorage.setItem(STORAGE_KEY,JSON.stringify(state));}catch(e){}
+  }
+
+  function allSavedSets(){
+    const out=[];
+    (state.liftSessions||[]).forEach(session=>{
+      (session.exercises||[]).forEach(ex=>{
+        (ex.sets||[]).forEach(set=>{
+          out.push({
+            name:ex.name,
+            weight:n(set.weight),
+            reps:n(set.reps),
+            raw:set,
+            exercise:ex,
+            session,
+            iso:session.iso||set.iso||""
+          });
+        });
+      });
+    });
+    return out.filter(x=>x.name);
+  }
+
+  function validSets(){
+    return allSavedSets().filter(x=>x.weight>0 && x.reps>0);
+  }
+
+  function incompleteSets(){
+    return allSavedSets().filter(x=>x.weight>0 && x.reps<=0);
+  }
+
+  function e1rm(set){
+    return set ? Math.round(n(set.weight)*(1+n(set.reps)/30)) : 0;
+  }
+
+  function prList(){
+    const best={};
+    validSets().forEach(set=>{
+      const key=String(set.name||"").toLowerCase();
+      const score=e1rm(set);
+      if(!best[key] || score>best[key].e1rm){
+        best[key]={...set,e1rm:score};
+      }
+    });
+    return Object.values(best).sort((a,b)=>b.e1rm-a.e1rm);
+  }
+
+  function lastSession(){
+    return (state.liftSessions||[]).slice().sort((a,b)=>String(b.iso||"").localeCompare(String(a.iso||"")))[0]||null;
+  }
+
+  function progressionRows(){
+    const session=lastSession();
+    if(!session || !(session.exercises||[]).length){
+      return `<p class="v15-muted">No saved strength session yet. Save one Strength workout to unlock next targets.</p>`;
+    }
+
+    return (session.exercises||[]).map(ex=>{
+      const sets=ex.sets||[];
+      const completed=sets.filter(s=>n(s.weight)>0 && n(s.reps)>0);
+      const incomplete=sets.filter(s=>n(s.weight)>0 && n(s.reps)<=0);
+
+      if(incomplete.length && !completed.length){
+        return `<div class="coach1762-row warn">
+          <div class="coach1762-icon">⚠️</div>
+          <div>
+            <strong>${esc(ex.name)}</strong>
+            <p><b>Incomplete Set</b> · Weight was logged, but reps were 0.</p>
+            <p>Enter completed reps to unlock PRs and progression recommendations.</p>
+          </div>
+          <span class="coach1762-badge">Incomplete</span>
+        </div>`;
+      }
+
+      if(!completed.length){
+        return `<div class="coach1762-row">
+          <div class="coach1762-icon">💪</div>
+          <div>
+            <strong>${esc(ex.name)}</strong>
+            <p>No completed set data saved.</p>
+            <p>Log at least one set with weight and reps.</p>
+          </div>
+          <span class="coach1762-badge">Log</span>
+        </div>`;
+      }
+
+      const top=completed.slice().sort((a,b)=>(n(b.weight)*n(b.reps))-(n(a.weight)*n(a.reps)))[0];
+      const nums=String(ex.targetReps||ex.reps||"10").match(/\d+/g)||["10"];
+      const low=Number(nums[0])||8;
+      const high=Number(nums[nums.length-1])||10;
+
+      let status="Earn Reps";
+      let next=`Repeat ${top.weight} lb and add 1 rep.`;
+
+      if(n(top.reps)>=high){
+        status="Increase";
+        next=`Try ${n(top.weight)+5} lb for ${low}-${high} reps.`;
+      }else if(n(top.reps)<low){
+        status="Hold";
+        next=`Stay at ${top.weight} lb until you reach ${low}+ reps.`;
+      }
+
+      return `<div class="coach1762-row">
+        <div class="coach1762-icon">💪</div>
+        <div>
+          <strong>${esc(ex.name)}</strong>
+          <p><b>${status}</b> · ${esc(next)}</p>
+          <p>Last best: ${esc(top.weight)} x ${esc(top.reps)} · e1RM ${e1rm(top)}</p>
+        </div>
+        <span class="coach1762-badge">${esc(status)}</span>
+      </div>`;
+    }).join("");
+  }
+
+  function blockReport(){
+    const weights=(state.weightLogV16||[]).filter(x=>x&&x.weight).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+    const first=weights[0]||null;
+    const last=weights[weights.length-1]||null;
+    const weightChange=first&&last?n(last.weight)-n(first.weight):null;
+    return {
+      workouts:(state.completed||[]).length,
+      liftSessions:(state.liftSessions||[]).length,
+      prs:prList().length,
+      incompleteSets:incompleteSets().length,
+      weightChange,
+      missed:(state.dailyIntelligenceV174?.missedWorkouts||[]).length,
+      awards:(state.dailyIntelligenceV174?.trophies||[]).length
+    };
+  }
+
+  function readinessPanel(){
+    const latest=(state.trainingIntelligenceV176?.ruutReadiness||[]).slice(-1)[0];
+    const d=latest?.decision||null;
+    return `<section id="coach1762Readiness" class="coach1762-panel">
+      <span class="coach1762-badge">Readiness 2.0</span>
+      <h3>${d?`${esc(d.color)} · ${esc(d.score)}`:"No Morning Metrics"}</h3>
+      <p class="v15-muted">${d?esc(d.line):"Import RUUT Shortcut metrics to produce Green / Yellow / Red training decisions."}</p>
+      <div class="coach1762-actions">
+        <button class="v1531-button-primary" onclick="coach176OpenRuutImport ? coach176OpenRuutImport() : alert('RUUT import not available')">Import RUUT Metrics</button>
+        <button class="v1531-button-secondary" onclick="showScreen('today')">Today</button>
+      </div>
+    </section>`;
+  }
+
+  function strengthPanel(){
+    const prs=prList();
+    const incomplete=incompleteSets();
+    return `<section id="coach1762Strength" class="coach1762-panel">
+      <span class="coach1762-badge">Strength Intelligence</span>
+      <h3>Next Lift Targets</h3>
+      <p class="v15-muted">Based on completed sets only. Incomplete sets are flagged instead of used for PRs.</p>
+      <div class="coach1762-grid">
+        <div class="coach1762-tile"><span>Lift Sessions</span><strong>${(state.liftSessions||[]).length}</strong></div>
+        <div class="coach1762-tile"><span>Tracked PRs</span><strong>${prs.length}</strong></div>
+        <div class="coach1762-tile"><span>Valid Sets</span><strong>${validSets().length}</strong></div>
+        <div class="coach1762-tile"><span>Incomplete Sets</span><strong>${incomplete.length}</strong></div>
+      </div>
+      <div class="coach1762-list">${progressionRows()}</div>
+      <div class="coach1762-actions">
+        <button class="v1531-button-primary" onclick="coach1762OpenPRs()">View PRs</button>
+        <button class="v1531-button-secondary" onclick="showScreen('strength')">Strength</button>
+      </div>
+    </section>`;
+  }
+
+  function blockPanel(){
+    const b=blockReport();
+    return `<section id="coach1762Block" class="coach1762-panel">
+      <span class="coach1762-badge">Training Block Report</span>
+      <h3>Current Block Summary</h3>
+      <div class="coach1762-grid">
+        <div class="coach1762-tile"><span>Workouts</span><strong>${b.workouts}</strong></div>
+        <div class="coach1762-tile"><span>Strength Sessions</span><strong>${b.liftSessions}</strong></div>
+        <div class="coach1762-tile"><span>PRs</span><strong>${b.prs}</strong></div>
+        <div class="coach1762-tile"><span>Incomplete Sets</span><strong>${b.incompleteSets}</strong></div>
+        <div class="coach1762-tile"><span>Weight Change</span><strong>${b.weightChange===null?"—":`${b.weightChange>0?"+":""}${b.weightChange.toFixed(1)} lb`}</strong></div>
+        <div class="coach1762-tile"><span>Missed</span><strong>${b.missed}</strong></div>
+      </div>
+    </section>`;
+  }
+
+  function mountStats(){
+    ensure();
+    const host=document.getElementById("dashboard");
+    if(!host) return false;
+
+    document.getElementById("coach1762Mount")?.remove();
+    host.insertAdjacentHTML("afterbegin", `<div id="coach1762Mount">${readinessPanel()}${strengthPanel()}${blockPanel()}</div>`);
+    return true;
+  }
+
+  window.coach1762OpenPRs=function(){
+    const prs=prList();
+    showModal(`<div class="v1531-modal-head">
+      <div class="v15-kicker">Strength PRs</div>
+      <h2>Personal Records</h2>
+      <p>Only completed sets with weight and reps count.</p>
+    </div>
+    <section class="coach1762-panel">
+      <div class="coach1762-list">
+        ${prs.length?prs.map(p=>`<div class="coach1762-row"><div class="coach1762-icon">⭐</div><div><strong>${esc(p.name)}</strong><p>${p.weight} x ${p.reps} · e1RM ${p.e1rm}</p></div><span class="coach1762-badge">PR</span></div>`).join(""):`<p class="v15-muted">No PRs yet. Log reps greater than 0.</p>`}
+      </div>
+    </section>
+    <div class="coach1762-actions"><button class="v1531-button-primary" onclick="hideModal()">Done</button><button class="v1531-button-secondary" onclick="showScreen('strength')">Strength</button></div>`);
+  };
+
+  const prevDashboard=window.renderDashboard;
+  window.renderDashboard=renderDashboard=function(){
+    if(typeof prevDashboard==="function") prevDashboard();
+    mountStats();
+    setTimeout(mountStats,50);
+    setTimeout(mountStats,250);
+  };
+
+  const prevShow=window.showScreen;
+  window.showScreen=showScreen=function(id,btn){
+    const result=typeof prevShow==="function" ? prevShow(id,btn) : undefined;
+    if(id==="dashboard" || id==="stats"){
+      setTimeout(mountStats,0);
+      setTimeout(mountStats,100);
+      setTimeout(mountStats,350);
+    }
+    return result;
+  };
+
+  const prevAll=window.renderAll;
+  window.renderAll=renderAll=function(){
+    if(typeof prevAll==="function") prevAll();
+    setTimeout(mountStats,0);
+    setTimeout(mountStats,250);
+  };
+
+  // Self-healing mount while Stats is active.
+  if(!window.__coach1762MountWatch){
+    window.__coach1762MountWatch=true;
+    setInterval(()=>{
+      const dash=document.getElementById("dashboard");
+      if(dash && dash.classList.contains("active") && !document.getElementById("coach1762Mount")){
+        mountStats();
+      }
+    },800);
+  }
+
+  ensure();
+  if(document.getElementById("dashboard")?.classList.contains("active")){
+    mountStats();
+  }
+
+  window.coach1762Diagnostic=function(){
+    return {
+      version:"17.6.2",
+      mounted:!!document.querySelector("#coach1762Mount"),
+      liftSessions:(state.liftSessions||[]).length,
+      validSets:validSets().length,
+      incompleteSets:incompleteSets().length,
+      prs:prList().length,
+      lastSession:lastSession(),
+      blockReport:blockReport()
+    };
+  };
+
+  window.COACH_TRAINING_INTELLIGENCE_VERSION="17.6.2";
+})();
