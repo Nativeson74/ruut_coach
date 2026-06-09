@@ -10091,3 +10091,23 @@ renderAll();
 
   window.COACH_PROGRESSIVE_OVERLOAD_VERSION="17.2";
 })();
+
+
+// ---------- COACH V17.3 DAILY INTELLIGENCE PACK ----------
+(function(){
+  state.dailyIntelligenceV173 = state.dailyIntelligenceV173 || {
+    version:"17.3",
+    goalWeight:null,
+    missedWorkouts:[],
+    trophies:[]
+  };
+
+  // Foundation objects for:
+  // Daily rollover
+  // Missed workout tracking
+  // Body metrics dashboard
+  // Readiness intelligence
+  // Awards & trophies
+
+  window.COACH_DAILY_INTELLIGENCE_VERSION = "17.3";
+})();
