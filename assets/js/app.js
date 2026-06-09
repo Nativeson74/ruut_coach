@@ -10111,3 +10111,299 @@ renderAll();
 
   window.COACH_DAILY_INTELLIGENCE_VERSION = "17.3";
 })();
+
+
+// ---------- COACH V17.4 DAILY INTELLIGENCE FEATURES ----------
+(function(){
+  /*
+    Adds:
+    - Daily rollover after local midnight
+    - Missed workout log
+    - Body Metrics Dashboard
+    - Goal Weight
+    - 7-day and 30-day averages
+    - Weight trend and best block weight
+    - Trophy Cabinet / Awards
+    - Streak, workout, recovery, weigh-in, and PR trophies
+    - Removes duplicate "This Week" schedule from Today and Stats; leaves it on Goals
+  */
+
+  function esc(v){return String(v ?? "").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
+  function n(v){const x=Number(v);return Number.isFinite(x)?x:0;}
+  function localISO(d=new Date()){const x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,10);}
+  function parseISODate(s){const d=new Date(String(s)+"T12:00:00");return Number.isFinite(d.getTime())?d:new Date();}
+  function addDaysISO(s,days){const d=parseISODate(s);d.setDate(d.getDate()+days);return localISO(d);}
+  function daysBetween(a,b){return Math.max(0,Math.round((parseISODate(b)-parseISODate(a))/86400000));}
+  function save(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(state));}catch(e){}}
+  function ensure174(){
+    state.dailyIntelligenceV173=state.dailyIntelligenceV173||{};
+    state.dailyIntelligenceV174=state.dailyIntelligenceV174||{};
+    state.dailyIntelligenceV174.version="17.4";
+    state.dailyIntelligenceV174.lastActiveDate=state.dailyIntelligenceV174.lastActiveDate||localISO();
+    state.dailyIntelligenceV174.missedWorkouts=Array.isArray(state.dailyIntelligenceV174.missedWorkouts)?state.dailyIntelligenceV174.missedWorkouts:[];
+    state.dailyIntelligenceV174.trophies=Array.isArray(state.dailyIntelligenceV174.trophies)?state.dailyIntelligenceV174.trophies:[];
+    state.dailyIntelligenceV174.goalWeight=state.dailyIntelligenceV174.goalWeight ?? null;
+    state.weightLogV16=Array.isArray(state.weightLogV16)?state.weightLogV16:[];
+    state.completed=Array.isArray(state.completed)?state.completed:[];
+    state.liftSessions=Array.isArray(state.liftSessions)?state.liftSessions:[];
+    state.workoutDebriefs=Array.isArray(state.workoutDebriefs)?state.workoutDebriefs:[];
+  }
+
+  function currentWorkoutKey(){
+    return `${Number(state.week||1)}-${Number(state.dayIndex||1)}`;
+  }
+  function titleForCurrentDay(){
+    try{
+      if(typeof currentWorkout==="function"){
+        const w=currentWorkout();
+        return w?.title || "Workout";
+      }
+    }catch(e){}
+    return "Workout";
+  }
+  function advanceOneDay(){
+    state.dayIndex=Number(state.dayIndex||1)+1;
+    if(state.dayIndex>7){
+      state.dayIndex=1;
+      state.week=Number(state.week||1)+1;
+    }
+  }
+  function markMissedForDate(date){
+    const key=currentWorkoutKey();
+    const exists=(state.dailyIntelligenceV174.missedWorkouts||[]).some(x=>x.date===date && x.key===key);
+    const completed=(state.completed||[]).includes(key);
+    if(!exists && !completed){
+      state.dailyIntelligenceV174.missedWorkouts.push({
+        date,
+        key,
+        week:Number(state.week||1),
+        dayIndex:Number(state.dayIndex||1),
+        title:titleForCurrentDay(),
+        iso:new Date().toISOString()
+      });
+    }
+  }
+  function dailyRollover(){
+    ensure174();
+    const today=localISO();
+    let last=state.dailyIntelligenceV174.lastActiveDate || today;
+    if(last===today) return false;
+    let gap=daysBetween(last,today);
+    if(gap>14) gap=14;
+    for(let i=0;i<gap;i++){
+      markMissedForDate(last);
+      advanceOneDay();
+      last=addDaysISO(last,1);
+    }
+    state.dailyIntelligenceV174.lastActiveDate=today;
+    save();
+    return true;
+  }
+
+  function weights(){
+    return (state.weightLogV16||[]).filter(x=>x && x.date && n(x.weight)>0).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  }
+  function avgWeight(rows){
+    if(!rows.length) return null;
+    return rows.reduce((s,x)=>s+n(x.weight),0)/rows.length;
+  }
+  function bodyMetrics(){
+    const rows=weights();
+    const latest=rows[rows.length-1]||null;
+    const avg7=avgWeight(rows.slice(-7));
+    const avg30=avgWeight(rows.slice(-30));
+    const first=rows[0]||null;
+    const delta=latest&&first?n(latest.weight)-n(first.weight):null;
+    const best=rows.length?rows.reduce((best,x)=>n(x.weight)<n(best.weight)?x:best,rows[0]):null;
+    const goal=state.dailyIntelligenceV174?.goalWeight ?? null;
+    return {rows,latest,avg7,avg30,first,delta,best,goal};
+  }
+  function fmtWeight(v){return v==None ? "—" : `${Number(v).toFixed(1)}`;}
+  // JS compatibility: avoid Python-style None in actual logic.
+  function fw(v){return v===null || v===undefined || Number.isNaN(Number(v)) ? "—" : `${Number(v).toFixed(1)}`;}
+
+  function weightStreak(){
+    const rows=weights();
+    if(!rows.length) return 0;
+    const dates=new Set(rows.map(x=>x.date));
+    let count=0;
+    let cursor=localISO();
+    while(dates.has(cursor)){
+      count++;
+      cursor=addDaysISO(cursor,-1);
+      if(count>365) break;
+    }
+    return count;
+  }
+  function workoutCount(){return (state.completed||[]).length;}
+  function strengthCount(){return (state.liftSessions||[]).length;}
+  function recoveryCount(){return n(state.recoverySessions||0)+(Array.isArray(state.recoverySessionLogV154)?state.recoverySessionLogV154.length:0);}
+  function missedCount(){ensure174();return (state.dailyIntelligenceV174.missedWorkouts||[]).length;}
+
+  function prCount(){
+    const best={};
+    (state.liftSessions||[]).forEach(s=>(s.exercises||[]).forEach(e=>(e.sets||[]).forEach(set=>{
+      const name=String(e.name||"").toLowerCase();
+      const score=n(set.weight)*n(set.reps);
+      if(name && (!best[name] || score>best[name])) best[name]=score;
+    })));
+    return Object.keys(best).length;
+  }
+
+  function trophyDefs(){
+    return [
+      ["firstWorkout","🏁","First Workout","Complete your first workout.",workoutCount()>=1],
+      ["tenWorkouts","🔥","10 Workouts","Complete 10 workouts.",workoutCount()>=10],
+      ["fiftyWorkouts","🏅","50 Workouts","Complete 50 workouts.",workoutCount()>=50],
+      ["hundredWorkouts","🏆","100 Workouts","Complete 100 workouts.",workoutCount()>=100],
+      ["firstStrength","💪","First Strength Session","Save your first strength session.",strengthCount()>=1],
+      ["fiftyStrength","🦾","50 Strength Sessions","Save 50 strength sessions.",strengthCount()>=50],
+      ["firstPR","⭐","First PR","Log your first exercise PR.",prCount()>=1],
+      ["tenPRs","🌟","10 PRs","Build PR history across 10 exercises.",prCount()>=10],
+      ["firstRecovery","🧘","First Recovery","Complete your first recovery session.",recoveryCount()>=1],
+      ["twentyFiveRecovery","🛡️","25 Recovery Sessions","Complete 25 recovery sessions.",recoveryCount()>=25],
+      ["sevenWeighIns","⚖️","7-Day Weigh-In Streak","Log weight 7 consecutive days.",weightStreak()>=7],
+      ["thirtyWeighIns","📈","30-Day Weigh-In Streak","Log weight 30 consecutive days.",weightStreak()>=30],
+      ["noMissWeek","✅","Clean Week","No missed workouts recorded yet.",missedCount()===0 && workoutCount()>0]
+    ];
+  }
+
+  function updateTrophies(){
+    ensure174();
+    const unlocked=new Set(state.dailyIntelligenceV174.trophies||[]);
+    trophyDefs().forEach(t=>{
+      if(t[4]) unlocked.add(t[0]);
+    });
+    state.dailyIntelligenceV174.trophies=[...unlocked];
+    save();
+  }
+
+  window.coach174SetGoalWeight=function(){
+    const m=bodyMetrics();
+    showModal(`<div class="v1531-modal-head"><div class="v15-kicker">Body Metrics</div><h2>Goal Weight</h2><p>Set a target weight for the current training block.</p></div>
+      <label class="small muted">Goal Weight</label>
+      <input class="coach174-input" id="coach174GoalWeightInput" type="number" step="0.1" value="${esc(m.goal||"")}" placeholder="175">
+      <div class="coach174-actions"><button class="v1531-button-primary" onclick="coach174SaveGoalWeight()">Save</button><button class="v1531-button-secondary" onclick="hideModal()">Cancel</button></div>`);
+  };
+  window.coach174SaveGoalWeight=function(){
+    ensure174();
+    const val=n(document.getElementById("coach174GoalWeightInput")?.value);
+    state.dailyIntelligenceV174.goalWeight=val||null;
+    save();
+    hideModal();
+    try{renderDashboard();renderToday();}catch(e){}
+  };
+
+  function bodyMetricsPanel(){
+    const m=bodyMetrics();
+    const latest=m.latest?n(m.latest.weight):null;
+    const toGoal=latest!==null && m.goal ? latest-n(m.goal) : null;
+    return `<section id="coach174BodyMetrics" class="coach174-panel">
+      <span class="coach174-badge">Body Metrics</span>
+      <h3>Weight Trend</h3>
+      <p class="v15-muted">RENPHO data can come in through Apple Health → iOS Shortcut → COACH import/manual entry. The dashboard uses the weight entries stored here.</p>
+      <div class="coach174-grid">
+        <div class="coach174-metric"><span>Current</span><strong>${fw(latest)} lb</strong></div>
+        <div class="coach174-metric"><span>7-Day Avg</span><strong>${fw(m.avg7)} lb</strong></div>
+        <div class="coach174-metric"><span>30-Day Avg</span><strong>${fw(m.avg30)} lb</strong></div>
+        <div class="coach174-metric"><span>Trend</span><strong>${m.delta===null?"—":`${m.delta>0?"+":""}${m.delta.toFixed(1)} lb`}</strong></div>
+        <div class="coach174-metric"><span>Goal</span><strong>${m.goal?fw(m.goal)+" lb":"—"}</strong></div>
+        <div class="coach174-metric"><span>To Goal</span><strong>${toGoal===null?"—":`${toGoal>0?"+":""}${toGoal.toFixed(1)} lb`}</strong></div>
+        <div class="coach174-metric"><span>Best Block Weight</span><strong>${m.best?fw(m.best.weight)+" lb":"—"}</strong></div>
+        <div class="coach174-metric"><span>Weigh-In Streak</span><strong>${weightStreak()}</strong></div>
+      </div>
+      <div class="coach174-actions">
+        <button class="v1531-button-primary" onclick="coachV16OpenWeight()">Add Weight</button>
+        <button class="v1531-button-secondary" onclick="coach174SetGoalWeight()">Set Goal</button>
+      </div>
+    </section>`;
+  }
+
+  function trophyCabinetPanel(limit=999){
+    updateTrophies();
+    const unlocked=new Set(state.dailyIntelligenceV174.trophies||[]);
+    const defs=trophyDefs();
+    return `<section id="coach174Trophies" class="coach174-panel">
+      <span class="coach174-badge">Trophy Cabinet</span>
+      <h3>Awards</h3>
+      <p class="v15-muted">${unlocked.size} of ${defs.length} unlocked. Awards are based on workouts, strength sessions, PRs, recovery, and weigh-in consistency.</p>
+      <div class="coach174-list">
+        ${defs.slice(0,limit).map(t=>{
+          const is=unlocked.has(t[0]);
+          return `<div class="coach174-row ${is?"":"locked"}"><div class="coach174-icon">${t[1]}</div><div><strong>${esc(t[2])}</strong><p>${esc(t[3])}</p></div><span class="coach174-badge">${is?"Unlocked":"Locked"}</span></div>`;
+        }).join("")}
+      </div>
+    </section>`;
+  }
+
+  function missedWorkoutPanel(){
+    ensure174();
+    const missed=(state.dailyIntelligenceV174.missedWorkouts||[]).slice(-5).reverse();
+    return `<section id="coach174Missed" class="coach174-panel">
+      <span class="coach174-badge">Daily Rollover</span>
+      <h3>Missed Workouts</h3>
+      <p class="v15-muted">After midnight, COACH advances to the next day. If the previous workout was not completed, it is logged here.</p>
+      <div class="coach174-grid">
+        <div class="coach174-metric"><span>Total Missed</span><strong>${missedCount()}</strong></div>
+        <div class="coach174-metric"><span>Current Day</span><strong>${Number(state.week||1)}.${Number(state.dayIndex||1)}</strong></div>
+      </div>
+      ${missed.length?`<div class="coach174-list">${missed.map(m=>`<div class="coach174-row"><div class="coach174-icon">⏭️</div><div><strong>${esc(m.title||"Workout")}</strong><p>${esc(m.date)} · Week ${esc(m.week)} Day ${esc(m.dayIndex)}</p></div><span class="coach174-badge">Missed</span></div>`).join("")}</div>`:""}
+    </section>`;
+  }
+
+  function removeDuplicateWeekCards(){
+    ["today","dashboard"].forEach(id=>{
+      const host=document.getElementById(id);
+      if(!host) return;
+      host.querySelectorAll(".coach-v161-week-card,.coach17-calendar").forEach(el=>{
+        const section=el.classList?.contains("coach-v161-week-card")?el:el.closest("section");
+        if(section && !section.closest("#plan")) section.remove();
+      });
+    });
+  }
+
+  const prevDashboard174=window.renderDashboard;
+  window.renderDashboard=renderDashboard=function(){
+    if(typeof prevDashboard174==="function") prevDashboard174();
+    const host=document.getElementById("dashboard"); if(!host) return;
+    ["coach174BodyMetrics","coach174Trophies","coach174Missed"].forEach(id=>document.getElementById(id)?.remove());
+    host.insertAdjacentHTML("afterbegin", missedWorkoutPanel());
+    host.insertAdjacentHTML("afterbegin", trophyCabinetPanel(6));
+    host.insertAdjacentHTML("afterbegin", bodyMetricsPanel());
+    removeDuplicateWeekCards();
+  };
+
+  const prevToday174=window.renderToday;
+  window.renderToday=renderToday=function(){
+    if(typeof prevToday174==="function") prevToday174();
+    const host=document.getElementById("today"); if(!host) return;
+    ["coach174TodayMetrics","coach174TodayMissed"].forEach(id=>document.getElementById(id)?.remove());
+    const m=bodyMetrics();
+    host.insertAdjacentHTML("beforeend", `<section id="coach174TodayMetrics" class="coach174-panel"><span class="coach174-badge">Body Metrics</span><h3>${m.latest?fw(m.latest.weight)+" lb":"No Weight Logged"}</h3><p class="v15-muted">7-day average: ${fw(m.avg7)} lb · 30-day average: ${fw(m.avg30)} lb</p><div class="coach174-actions"><button class="v1531-button-primary" onclick="coachV16OpenWeight()">Add Weight</button><button class="v1531-button-secondary" onclick="showScreen('dashboard')">Open Stats</button></div></section>`);
+    removeDuplicateWeekCards();
+  };
+
+  const prevPlan174=window.renderPlan;
+  window.renderPlan=renderPlan=function(){
+    if(typeof prevPlan174==="function") prevPlan174();
+    // Goals keeps the weekly schedule.
+  };
+
+  const prevRenderAll174=window.renderAll;
+  window.renderAll=renderAll=function(){
+    const changed=dailyRollover();
+    if(typeof prevRenderAll174==="function") prevRenderAll174();
+    updateTrophies();
+    removeDuplicateWeekCards();
+  };
+
+  // Run rollover once on load, then at least once per minute while app is open.
+  dailyRollover();
+  updateTrophies();
+  setInterval(()=>{
+    const changed=dailyRollover();
+    if(changed){try{renderAll();}catch(e){}}
+  },60000);
+
+  window.COACH_DAILY_INTELLIGENCE_VERSION="17.4";
+})();
