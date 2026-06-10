@@ -1526,12 +1526,3 @@ body.ruut-v15 nav button[data-target="strength"].active{color:var(--v15-lime)!im
 .coach177-field label{display:block;color:#aeb8c6;font-size:11px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin:0 0 6px}
 .coach177-field p{margin:5px 0 0;color:#7f8998;font-size:11px;line-height:1.3}
 @media(max-width:520px){.coach177-grid{grid-template-columns:1fr}.coach177-actions{grid-template-columns:1fr}.coach177-row{grid-template-columns:auto 1fr}.coach177-row .coach177-badge{grid-column:2}}
-
-
-/* ---------- COACH v17.8 UX CLEANUP ---------- */
-.coach178-note{
-  margin-top:8px;
-  color:#aeb8c6;
-  font-size:12px;
-  line-height:1.35;
-}

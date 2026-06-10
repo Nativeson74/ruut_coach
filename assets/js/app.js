@@ -11629,131 +11629,49 @@ renderAll();
 })();
 
 
-// ---------- COACH V17.8 UX CLEANUP ----------
+// ---------- COACH v17.8.1 STATS DEDUPE ----------
 (function(){
-  /*
-    UX pass:
-    - Stats order:
-      1. Readiness 2.0
-      2. Body Metrics / Weight Trend
-      3. Block Progression
-      4. Strength Intelligence
-      5. Training Block Report
-      6. Trophy Cabinet
-    - Daily Rollover and Feature Status are removed from the visible Stats page.
-    - Behind-the-scenes rollover/diagnostics remain functional in state.
-  */
-
-  function sectionText(sec){
-    return String(sec?.innerText || "").toLowerCase();
-  }
-
-  function has(sec,label){
-    return sectionText(sec).includes(String(label).toLowerCase());
-  }
-
-  function firstSection(host,label){
-    return [...host.querySelectorAll("section")].find(sec=>has(sec,label));
-  }
-
-  function removeDuplicate(host,label){
-    const matches=[...host.querySelectorAll("section")].filter(sec=>has(sec,label));
-    matches.slice(1).forEach(sec=>sec.remove());
-  }
-
-  function removeBehindScenesCards(){
+  function cleanupTrainingReportTitles(){
     const host=document.getElementById("dashboard");
     if(!host) return;
 
-    [
-      "coach1741Diagnostic",
-      "coach1742Diagnostic",
-      "coach1741Rollover",
-      "coach1742Rollover",
-      "coach174Missed"
-    ].forEach(id=>document.getElementById(id)?.remove());
-
     [...host.querySelectorAll("section")].forEach(sec=>{
-      const txt=sectionText(sec);
-      const isBehindScenes =
-        txt.includes("feature status") ||
-        txt.includes("daily intelligence") ||
-        txt.includes("daily rollover") ||
-        txt.includes("midnight advance") ||
-        txt.includes("midnight system") ||
-        (txt.includes("missed workouts") && txt.includes("after midnight"));
+      const txt=(sec.innerText||"").toLowerCase();
 
-      if(isBehindScenes) sec.remove();
+      if(txt.includes("training block report")){
+        sec.querySelectorAll("h1,h2,h3,h4").forEach(h=>{
+          const t=(h.innerText||"").trim().toLowerCase();
+          if(
+            t.includes("hybrid capacity block") ||
+            t.includes("muscle foundation block") ||
+            t.includes("body composition block") ||
+            t.includes("endurance build block") ||
+            t.includes("general fitness block") ||
+            t.includes("maintenance block")
+          ){
+            h.innerText="Training Report";
+          }
+        });
+      }
     });
   }
 
-  function reorderStats(){
-    const host=document.getElementById("dashboard");
-    if(!host) return;
-
-    removeBehindScenesCards();
-
-    const head=host.querySelector(".v15-screen-head");
-    const readiness=firstSection(host,"Readiness 2.0");
-    const body=firstSection(host,"Body Metrics") || firstSection(host,"Weight Trend");
-    const blockProgress=firstSection(host,"Block Progression");
-    const strength=firstSection(host,"Strength Intelligence");
-    const blockReport=firstSection(host,"Training Block Report");
-    const trophies=firstSection(host,"Trophy Cabinet") || firstSection(host,"Awards");
-
-    const ordered=[head,readiness,body,blockProgress,strength,blockReport,trophies].filter(Boolean);
-
-    for(let i=ordered.length-1;i>=0;i--){
-      host.prepend(ordered[i]);
-    }
-
-    removeDuplicate(host,"Readiness 2.0");
-    removeDuplicate(host,"Strength Intelligence");
-    removeDuplicate(host,"Training Block Report");
-    removeDuplicate(host,"Body Metrics");
-    removeDuplicate(host,"Trophy Cabinet");
-  }
-
-  const previousDashboard178=window.renderDashboard;
+  const prevDash181=window.renderDashboard;
   window.renderDashboard=renderDashboard=function(){
-    if(typeof previousDashboard178==="function") previousDashboard178();
-    reorderStats();
-    setTimeout(reorderStats,50);
-    setTimeout(reorderStats,250);
+    if(typeof prevDash181==="function") prevDash181();
+    setTimeout(cleanupTrainingReportTitles,50);
+    setTimeout(cleanupTrainingReportTitles,250);
   };
 
-  const previousShow178=window.showScreen;
+  const prevShow181=window.showScreen;
   window.showScreen=showScreen=function(id,btn){
-    const result=typeof previousShow178==="function" ? previousShow178(id,btn) : undefined;
-    if(id==="dashboard" || id==="stats"){
-      setTimeout(reorderStats,0);
-      setTimeout(reorderStats,150);
-      setTimeout(reorderStats,400);
+    const r=typeof prevShow181==="function" ? prevShow181(id,btn) : undefined;
+    if(id==="dashboard"||id==="stats"){
+      setTimeout(cleanupTrainingReportTitles,50);
+      setTimeout(cleanupTrainingReportTitles,250);
     }
-    return result;
+    return r;
   };
 
-  const previousAll178=window.renderAll;
-  window.renderAll=renderAll=function(){
-    if(typeof previousAll178==="function") previousAll178();
-    setTimeout(reorderStats,100);
-  };
-
-  if(document.getElementById("dashboard")?.classList.contains("active")){
-    reorderStats();
-  }
-
-  window.coach178Diagnostic=function(){
-    const host=document.getElementById("dashboard");
-    return {
-      version:"17.8",
-      statsMounted:!!host,
-      readinessCount:host?[...host.querySelectorAll("section")].filter(s=>has(s,"Readiness 2.0")).length:0,
-      bodyMetricsCount:host?[...host.querySelectorAll("section")].filter(s=>has(s,"Body Metrics")||has(s,"Weight Trend")).length:0,
-      rolloverVisible:host?[...host.querySelectorAll("section")].some(s=>has(s,"Daily Rollover")||has(s,"Midnight")):false,
-      featureStatusVisible:host?[...host.querySelectorAll("section")].some(s=>has(s,"Feature Status")||has(s,"Daily Intelligence")):false
-    };
-  };
-
-  window.COACH_UX_CLEANUP_VERSION="17.8";
+  window.COACH_STATS_DEDUPE_VERSION="17.8.1";
 })();
